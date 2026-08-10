@@ -1,0 +1,30 @@
+# additional stateless scalar functions
+- name: trim_family
+  query: "source | extend A = trim('x', s), B = trim_start('x', s), C = trim_end('x', s)"
+  input:  [{s: "xxhelloxx"}]
+  expect: [{s: "xxhelloxx", A: "hello", B: "helloxx", C: "xxhello"}]
+
+- name: strcat_array_and_reverse
+  query: "source | extend J = strcat_array(arr, '-'), R = reverse(s)"
+  input:  [{arr: [1, 2, 3], s: "abc"}]
+  expect: [{arr: [1, 2, 3], s: "abc", J: "1-2-3", R: "cba"}]
+
+- name: set_ops
+  query: "source | extend U = set_union(a, b), I = set_intersect(a, b), D = set_difference(a, b)"
+  input:  [{a: [1, 2, 3], b: [2, 3, 4]}]
+  expect: [{a: [1, 2, 3], b: [2, 3, 4], U: [1, 2, 3, 4], I: [2, 3], D: [1]}]
+
+- name: array_helpers
+  query: "source | extend Idx = array_index_of(arr, 20), Slice = array_slice(arr, 1, 2)"
+  input:  [{arr: [10, 20, 30, 40]}]
+  expect: [{arr: [10, 20, 30, 40], Idx: 1, Slice: [20, 30]}]
+
+- name: math_and_hex
+  query: "source | extend R = sqrt(n), H = tohex(255)"
+  input:  [{n: 16}]
+  expect: [{n: 16, R: 4.0, H: "ff"}]
+
+- name: datetime_funcs
+  query: "source | extend Y = getyear(todatetime(d)), Diff = datetime_diff('day', todatetime(d2), todatetime(d)), F = format_datetime(todatetime(d), 'yyyy-MM-dd')"
+  input:  [{d: "2021-01-01T00:00:00Z", d2: "2021-01-11T00:00:00Z"}]
+  expect: [{d: "2021-01-01T00:00:00Z", d2: "2021-01-11T00:00:00Z", Y: 2021, Diff: 10, F: "2021-01-01"}]

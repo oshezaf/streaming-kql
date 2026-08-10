@@ -127,6 +127,22 @@ class Parse(Operator):
 
 
 @dataclass(frozen=True)
+class ProjectReorder(Operator):
+    names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ParseKv(Operator):
+    source: Expr
+    columns: tuple[tuple[str, str | None], ...]  # (name, type)
+    options: tuple[tuple[str, str], ...]          # (option_name, value)
+
+
+@dataclass(frozen=True)
 class Query:
     operators: tuple[Operator, ...] = field(default_factory=tuple)
+    lets: tuple[tuple[str, Expr], ...] = ()
+    source_kind: str = "source"                   # 'source' | 'print'
+    print_items: tuple[tuple[str | None, Expr], ...] = ()
+
 

@@ -27,10 +27,12 @@ from .nodes import (
     Member,
     Operator,
     Parse,
+    ParseKv,
     Project,
     ProjectAway,
     ProjectKeep,
     ProjectRename,
+    ProjectReorder,
     Query,
     Unary,
     Where,
@@ -50,6 +52,7 @@ class Options:
     ):
         self.now = now
         self.strict_types = strict_types
+        self._lets: dict[str, Any] = {}
 
     def clock(self) -> datetime:
         return self.now or datetime.now(timezone.utc)
@@ -120,7 +123,7 @@ def compile_expr(node: Expr, opts: Options) -> Callable[[Record], Any]:
         return lambda env: val
     if isinstance(node, Column):
         name = node.name
-        return lambda env: env.get(name)
+        return lambda env: env[name] if name in env else opts._lets.get(name)
     if isinstance(node, ExprList):
         parts = [compile_expr(i, opts) for i in node.items]
         return lambda env: [p(env) for p in parts]
@@ -389,6 +392,35 @@ def _compile_parse(op: Parse, opts: Options) -> OpFn:
     return _parse
 
 
+def _compile_parsekv(op: ParseKv, opts: Options) -> OpFn:
+    src = compile_expr(op.source, opts)
+    o = dict(op.options)
+    pair_delim = o.get("pair_delimiter", " ")
+    kv_delim = o.get("kv_delimiter", "=")
+    quote = o.get("quote")
+    cols = op.columns
+
+    def _pkv(rec: Record) -> Iterable[Record]:
+        text = fns._s(src(rec))
+        kv: dict[str, str] = {}
+        pairs = text.split(pair_delim) if pair_delim else [text]
+        for pair in pairs:
+            if kv_delim and kv_delim in pair:
+                k, v = pair.split(kv_delim, 1)
+                k = k.strip()
+                v = v.strip()
+                if quote:
+                    v = v.strip(quote)
+                if k:
+                    kv[k] = v
+        out = dict(rec)
+        for name, col_type in cols:
+            out[name] = _cast(kv[name], col_type) if name in kv else None
+        return (out,)
+
+    return _pkv
+
+
 # --- operator compilation ----------------------------------------------------
 OpFn = Callable[[Record], Iterable[Record]]
 
@@ -421,8 +453,20 @@ def _compile_operator(op: Operator, opts: Options) -> OpFn:
     if isinstance(op, ProjectKeep):
         keep = set(op.names)
         return lambda rec: ({k: v for k, v in rec.items() if k in keep},)
+    if isinstance(op, ProjectReorder):
+        order = op.names
+
+        def _reorder(rec: Record) -> Iterable[Record]:
+            out: Record = {n: rec[n] for n in order if n in rec}
+            for k, v in rec.items():
+                if k not in out:
+                    out[k] = v
+            return (out,)
+        return _reorder
     if isinstance(op, Parse):
         return _compile_parse(op, opts)
+    if isinstance(op, ParseKv):
+        return _compile_parsekv(op, opts)
     if isinstance(op, ProjectRename):
         pairs = op.pairs
 
@@ -440,12 +484,27 @@ class CompiledQuery:
     """A compiled, reusable query (see ``streaming_kql.compile``)."""
 
     def __init__(self, query: Query, opts: Options):
-        self._opts = opts
-        self._ops = [_compile_operator(op, opts) for op in query.operators]
+        # Use a per-query Options clone so `let` bindings don't leak between
+        # queries that share one Options instance (e.g. inside a Node).
+        local = Options(now=opts.now, strict_types=opts.strict_types)
+        for name, expr in query.lets:
+            local._lets[name] = compile_expr(expr, local)({})
+        self._opts = local
+        self._source_kind = query.source_kind
+        self._print_row: Record | None = None
+        if query.source_kind == "print":
+            row: Record = {}
+            for i, (pname, pexpr) in enumerate(query.print_items):
+                row[pname or f"print_{i}"] = compile_expr(pexpr, local)({})
+            self._print_row = row
+        self._ops = [_compile_operator(op, local) for op in query.operators]
 
     def transform(self, record: Record) -> list[Record]:
         """One record in → 0..N records out."""
-        current: list[Record] = [dict(record)]
+        if self._source_kind == "print":
+            current: list[Record] = [dict(self._print_row or {})]
+        else:
+            current = [dict(record)]
         for op in self._ops:
             nxt: list[Record] = []
             for rec in current:

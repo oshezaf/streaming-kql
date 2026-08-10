@@ -519,3 +519,166 @@ def _totimespan(v: Any) -> Any:
     return timedelta(**{kw: amount})
 
 
+@register("dayofweek")
+def _dayofweek(v: Any) -> Any:
+    from datetime import timedelta
+    d = _dt(v)
+    if not d:
+        return None
+    return timedelta(days=(d.weekday() + 1) % 7)  # KQL: Sunday=0 .. Saturday=6
+
+
+_DIFF_SECONDS = {"second": 1, "minute": 60, "hour": 3600, "day": 86400,
+                 "week": 604800}
+
+
+@register("datetime_diff")
+def _datetime_diff(part: Any, a: Any, b: Any) -> int | None:
+    da, db = _dt(a), _dt(b)
+    p = _s(part).lower()
+    if da is None or db is None:
+        return None
+    if p in _DIFF_SECONDS:
+        return int((da - db).total_seconds() // _DIFF_SECONDS[p])
+    if p == "month":
+        return (da.year - db.year) * 12 + (da.month - db.month)
+    if p == "year":
+        return da.year - db.year
+    return None
+
+
+_FMT_TOKENS = [("yyyy", "%Y"), ("MM", "%m"), ("dd", "%d"), ("HH", "%H"),
+               ("mm", "%M"), ("ss", "%S")]
+
+
+@register("format_datetime")
+def _format_datetime(v: Any, fmt: Any) -> str | None:
+    d = _dt(v)
+    if d is None:
+        return None
+    out = _s(fmt)
+    for kql_tok, py_tok in _FMT_TOKENS:
+        out = out.replace(kql_tok, py_tok)
+    return d.strftime(out)
+
+
+# --- more string / array / dynamic ------------------------------------------
+@register("trim")
+def _trim(pattern: Any, source: Any) -> str | None:
+    if source is None:
+        return None
+    p = _s(pattern)
+    return re.sub(f"^(?:{p})+|(?:{p})+$", "", _s(source))
+
+
+@register("trim_start")
+def _trim_start(pattern: Any, source: Any) -> str | None:
+    if source is None:
+        return None
+    return re.sub(f"^(?:{_s(pattern)})+", "", _s(source))
+
+
+@register("trim_end")
+def _trim_end(pattern: Any, source: Any) -> str | None:
+    if source is None:
+        return None
+    return re.sub(f"(?:{_s(pattern)})+$", "", _s(source))
+
+
+@register("strcat_array")
+def _strcat_array(arr: Any, delim: Any) -> str | None:
+    if not isinstance(arr, list):
+        return None
+    return _s(delim).join(_s(x) for x in arr)
+
+
+@register("reverse")
+def _reverse(v: Any) -> Any:
+    if isinstance(v, list):
+        return list(reversed(v))
+    if v is None:
+        return None
+    return _s(v)[::-1]
+
+
+@register("sqrt")
+def _sqrt(v: Any) -> Any:
+    n = _num(v)
+    return None if n is None or n < 0 else _math.sqrt(n)
+
+
+@register("tohex")
+def _tohex(v: Any) -> str | None:
+    n = _toint(v)
+    if n is None:
+        return None
+    return format(n & (2 ** 64 - 1) if n < 0 else n, "x")
+
+
+@register("array_index_of")
+def _array_index_of(arr: Any, value: Any) -> int:
+    if isinstance(arr, list):
+        try:
+            return arr.index(value)
+        except ValueError:
+            return -1
+    return -1
+
+
+@register("array_slice")
+def _array_slice(arr: Any, start: Any, end: Any) -> Any:
+    if not isinstance(arr, list):
+        return None
+    return arr[int(start):int(end) + 1]
+
+
+@register("bag_keys")
+def _bag_keys(v: Any) -> Any:
+    return list(v.keys()) if isinstance(v, dict) else None
+
+
+def _distinct(seq: Any) -> list:
+    out: list[Any] = []
+    for x in seq:
+        if x not in out:
+            out.append(x)
+    return out
+
+
+@register("set_union")
+def _set_union(*arrays: Any) -> list:
+    out: list[Any] = []
+    for a in arrays:
+        if isinstance(a, list):
+            out.extend(a)
+    return _distinct(out)
+
+
+@register("set_intersect")
+def _set_intersect(first: Any, *rest: Any) -> list:
+    if not isinstance(first, list):
+        return []
+    others = [set(map(_hashable, a)) for a in rest if isinstance(a, list)]
+    return _distinct([x for x in first if all(_hashable(x) in o for o in others)])
+
+
+@register("set_difference")
+def _set_difference(first: Any, *rest: Any) -> list:
+    if not isinstance(first, list):
+        return []
+    remove: set[Any] = set()
+    for a in rest:
+        if isinstance(a, list):
+            remove.update(_hashable(x) for x in a)
+    return _distinct([x for x in first if _hashable(x) not in remove])
+
+
+def _hashable(x: Any) -> Any:
+    try:
+        hash(x)
+        return x
+    except TypeError:
+        return _s(x)
+
+
+

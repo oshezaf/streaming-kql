@@ -28,12 +28,14 @@ from .nodes import (
     Literal,
     Member,
     Parse,
+    ParseKv,
     ParseSeg,
     Project,
     ProjectAway,
     ProjectItem,
     ProjectKeep,
     ProjectRename,
+    ProjectReorder,
     Query,
     Unary,
     Where,
@@ -51,19 +53,29 @@ _DEFERRED_OPERATORS = {"mv-expand", "mv-expand-array", "bag_unpack", "evaluate",
                        "take", "limit", "sample"}
 _SUPPORTED_OPERATORS = {
     "where", "filter", "extend", "project", "project-away", "project-rename",
-    "project-keep", "parse", "parse-where",
+    "project-keep", "project-reorder", "parse", "parse-where", "parse-kv",
 }
+_SOURCE_HEADS = {"source", "print", "let"}
 
 _GRAMMAR = r"""
-start: "source" ("|" operator)*
+start: let_stmt* query_body
+let_stmt: "let" NAME "=" expr ";"
+?query_body: q_source | q_print
+q_source: "source" ("|" operator)*
+q_print: print_op ("|" operator)*
+print_op: "print" print_item ("," print_item)*
+?print_item: NAME "=" expr -> print_named
+           | expr           -> print_anon
 
 ?operator: where_op
          | extend_op
          | project_op
          | project_away_op
          | project_keep_op
+         | project_reorder_op
          | project_rename_op
          | parse_op
+         | parsekv_op
 
 where_op: ("where"|"filter") expr
 extend_op: "extend" assignment ("," assignment)*
@@ -73,6 +85,7 @@ project_op: "project" project_item ("," project_item)*
              | NAME          -> project_keep
 project_away_op: PROJECT_AWAY NAME ("," NAME)*
 project_keep_op: PROJECT_KEEP NAME ("," NAME)*
+project_reorder_op: PROJECT_REORDER NAME ("," NAME)*
 project_rename_op: PROJECT_RENAME rename_pair ("," rename_pair)*
 rename_pair: NAME "=" NAME
 parse_op: PARSE_KW parse_kind? expr "with" parse_seg+
@@ -81,6 +94,9 @@ parse_kind: "kind" "=" NAME
           | DQSTRING -> pseg_lit
           | "*"      -> pseg_star
           | NAME (":" NAME)? -> pseg_col
+parsekv_op: PARSEKV expr "as" "(" kv_col ("," kv_col)* ")" "with" "(" kv_opt ("," kv_opt)* ")"
+kv_col: NAME ":" NAME
+kv_opt: NAME "=" (SQSTRING|DQSTRING)
 
 ?expr: or_expr
 ?or_expr: and_expr | or_expr "or" and_expr -> or_
@@ -111,8 +127,10 @@ COMP.2: /==|!=|<=|>=|=~|!~|<|>/
 STROP.2: /!?(has_cs|has|contains_cs|contains|startswith_cs|startswith|endswith_cs|endswith|in)\b/
 PROJECT_AWAY.2: /project-away\b/
 PROJECT_KEEP.2: /project-keep\b/
+PROJECT_REORDER.2: /project-reorder\b/
 PROJECT_RENAME.2: /project-rename\b/
 PARSE_KW.2: /parse-where\b|parse\b/
+PARSEKV.3: /parse-kv\b/
 NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
 NUMBER: /\d+(\.\d+)?([eE][+-]?\d+)?/
 DQSTRING: /"([^"\\]|\\.)*"/
@@ -142,7 +160,31 @@ def _unescape(tok: str) -> str:
 
 class _ToAst(Transformer):
     def start(self, ch: list) -> Query:
-        return Query(tuple(ch))
+        lets = tuple((c[1], c[2]) for c in ch
+                     if isinstance(c, tuple) and len(c) == 3 and c[0] == "let")
+        q = next(c for c in ch if isinstance(c, Query))
+        return Query(operators=q.operators, lets=lets,
+                     source_kind=q.source_kind, print_items=q.print_items)
+
+    def let_stmt(self, ch: list) -> tuple:
+        return ("let", str(ch[0]), ch[1])
+
+    def q_source(self, ch: list) -> Query:
+        return Query(operators=tuple(ch), source_kind="source")
+
+    def q_print(self, ch: list) -> Query:
+        items = ch[0]
+        ops = tuple(ch[1:])
+        return Query(operators=ops, source_kind="print", print_items=tuple(items))
+
+    def print_op(self, ch: list) -> list:
+        return list(ch)
+
+    def print_named(self, ch: list) -> tuple:
+        return (str(ch[0]), ch[1])
+
+    def print_anon(self, ch: list) -> tuple:
+        return (None, ch[0])
 
     # operators
     def where_op(self, ch: list) -> Where:
@@ -170,6 +212,10 @@ class _ToAst(Transformer):
     def project_keep_op(self, ch: list) -> ProjectKeep:
         names = tuple(str(t) for t in ch if isinstance(t, Token) and t.type == "NAME")
         return ProjectKeep(names)
+
+    def project_reorder_op(self, ch: list) -> ProjectReorder:
+        names = tuple(str(t) for t in ch if isinstance(t, Token) and t.type == "NAME")
+        return ProjectReorder(names)
 
     def project_rename_op(self, ch: list) -> ProjectRename:
         pairs = tuple(c for c in ch if isinstance(c, tuple))
@@ -202,6 +248,19 @@ class _ToAst(Transformer):
         source = rest[0]
         segs = tuple(s for s in rest[1:] if isinstance(s, ParseSeg))
         return Parse(source, kind, segs, drop_unmatched=(kw == "parse-where"))
+
+    # parse-kv operator
+    def kv_col(self, ch: list) -> tuple:
+        return ("col", str(ch[0]), str(ch[1]))
+
+    def kv_opt(self, ch: list) -> tuple:
+        return ("opt", str(ch[0]), _unescape(str(ch[1])))
+
+    def parsekv_op(self, ch: list) -> ParseKv:
+        source = next(c for c in ch if not isinstance(c, (Token, tuple)))
+        cols = tuple((c[1], c[2]) for c in ch if isinstance(c, tuple) and c[0] == "col")
+        opts = tuple((c[1], c[2]) for c in ch if isinstance(c, tuple) and c[0] == "opt")
+        return ParseKv(source, cols, opts)
 
     # expressions
     def or_(self, ch: list) -> Binary:
@@ -312,9 +371,11 @@ def _precheck(text: str) -> None:
     """Give friendly errors for stateful/deferred/unknown operators before the
     grammar runs (which only recognizes supported operators)."""
     segs = _split_pipes(text)
-    first = segs[0].strip() if segs else ""
-    if not first.startswith("source"):
-        raise KqlCompileError("a streaming-kql query must start with 'source'")
+    first = segs[0].strip()
+    head = first.split()[0].lower() if first.split() else ""
+    if head not in _SOURCE_HEADS:
+        raise KqlCompileError(
+            "a streaming-kql query must start with 'source', 'print', or 'let'")
     for seg in segs[1:]:
         m = _OP_LEADING.match(seg)
         if not m:

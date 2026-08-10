@@ -232,6 +232,55 @@ Full DCR set (Appendix A tracks status):
 `KqlUnsupportedError` naming the operator. A future stateful extension (§2.3) may
 add windowed equivalents.
 
+### 5.7 Further stateless additions to consider (survey)
+
+Beyond the DCR baseline, these KQL features also fit the **single-event
+stateless** model and are candidates for future milestones. (Anything that
+aggregates, orders, or dedupes across rows is *excluded* — see §5.6.)
+
+**Tabular operators (stateless-compatible):**
+
+| Operator | Cardinality | Notes / priority |
+|---|---|---|
+| `datatable` | source, N constant rows | for `let`/tests; **planned** |
+| `evaluate bag_unpack` | 1→1 | expand a `dynamic` bag into columns — high value for logs |
+| `mv-expand` | 1→N | expand an array/bag column into rows (deferred; the model allows 1→N) |
+| `mv-apply` (no aggregation) | 1→N | per-row subquery over an array; only the non-aggregating form |
+| `evaluate narrow` | 1→N | unpivot one row to key/value rows |
+| `search` (per-row) | 1→0/1 | free-text match across a row's columns |
+| `sample` / `sample-distinct` | 1→0/1 | non-deterministic (random) — opt-in only |
+
+**Not addable (stateful):** `summarize`, `join`, `union`, `sort`/`order`, `top`,
+`make-series`, `serialize`, `partition`, `scan`, `range`, `distinct`, `count`,
+`facet`, `render`, `lookup`.
+
+**Scalar functions (stateless) — prioritized for log/ASIM work:**
+
+- **IP:** `parse_ipv4`, `ipv4_is_in_range`, `ipv4_is_private`, `ipv4_compare`,
+  `ipv4_netmask_suffix`, `parse_ipv6`, `ipv6_compare`, `format_ipv4`.
+- **URL / path:** `parse_url`, `parse_urlquery`, `parse_path`, `url_encode`,
+  `url_decode`, `url_encode_component`.
+- **String:** `strcmp`, `translate`, `indexof_regex`, `parse_command_line`,
+  `parse_csv`, `parse_version`, `punycode_*`, `regex_quote`.
+- **Dynamic / array:** `bag_merge`, `bag_remove_keys`, `array_sort_asc`/`_desc`,
+  `array_split`, `array_rotate_left`/`_right`, `array_reverse`, `array_sum`,
+  `array_iff`, `treepath`.
+- **DateTime:** `datetime_add`, `datetime_part`, `make_datetime`,
+  `make_timespan`, `format_timespan`, `endofday`/`endofmonth`/`endofweek`/
+  `endofyear`, `weekofyear`, `unixtime_seconds_todatetime` (+ ms/us/ns).
+- **Math:** trig (`sin`/`cos`/`tan`/`asin`/`acos`/`atan`/`atan2`),
+  `degrees`/`radians`, `gamma`/`log_gamma`, `gcd`/`lcm`, `not`. *(`rand` is
+  non-deterministic → opt-in only.)*
+- **Conversion:** `toguid`, `todecimal`, `tohex` (done), `tolong` (done).
+- **Hash:** `hash`, `hash_md5`, `hash_sha1`, `hash_combine`, `hash_many`,
+  `hash_xxhash64`.
+- **Type:** `isascii`, `isutf8`.
+- **Special (transformation-only):** `parse_cef_dictionary`, `parse_xml`.
+- **Beyond-DCR (added):** `parse-kv` operator; `trim`/`trim_start`/`trim_end`,
+  `strcat_array`, `reverse`, `sqrt`, `tohex`, `array_index_of`, `array_slice`,
+  `bag_keys`, `set_union`/`set_intersect`/`set_difference`, `format_datetime`,
+  `datetime_diff`, `dayofweek`.
+
 ---
 
 ## 6. Architecture
@@ -382,13 +431,14 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
 
 > CI asserts every ✅ has ≥1 test. Legend: ☐ planned · ◐ partial · ✅ done.
 
-**Statements:** ◐ `source` · ☐ `print` · ☐ `let`
+**Statements:** ✅ `source` · ✅ `print` · ✅ `let`
 
 **Tabular (DCR baseline):** ✅ `where` · ✅ `extend` · ✅ `project` · ✅
 `project-away` · ✅ `project-rename` · ✅ `parse` · ✅ `parse-where` · ✅
 `columnifexists` · ☐ `print` · ☐ `datatable`
 
-**Tabular (stateless ext):** ✅ `project-keep` · ☐ `project-reorder`
+**Tabular (stateless ext):** ✅ `project-keep` · ✅ `project-reorder` · ✅
+`parse-kv` (beyond DCR)
 
 **Tabular (deferred, per-operator):** ☐ `mv-expand` · ☐ `bag_unpack` · ☐
 `take`/`limit` · ☐ `sample`

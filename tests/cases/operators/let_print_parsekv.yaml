@@ -1,0 +1,38 @@
+# let, print, project-reorder, parse-kv
+- name: let_scalar
+  query: "let threshold = 80; source | where Price > threshold"
+  input:
+    - {Sym: MSFT, Price: 90}
+    - {Sym: MSFT, Price: 50}
+  expect:
+    - {Sym: MSFT, Price: 90}
+
+- name: let_chained
+  query: "let a = 10; let b = a * 2; source | extend total = Price + b"
+  input:  [{Price: 5}]
+  expect: [{Price: 5, total: 25}]
+
+- name: print_basic
+  query: "print x = 2 + 3, y = 'hi'"
+  input:  [{}]
+  expect: [{x: 5, y: "hi"}]
+
+- name: print_then_extend
+  query: "print n = 4 | extend doubled = n * 2"
+  input:  [{}]
+  expect: [{n: 4, doubled: 8}]
+
+- name: project_reorder
+  query: "source | project-reorder Z, Y"
+  input:  [{A: 1, Y: 2, Z: 3}]
+  expect: [{Z: 3, Y: 2, A: 1}]
+
+- name: parse_kv_basic
+  query: "source | parse-kv Msg as (user:string, code:long) with (pair_delimiter=';', kv_delimiter='=')"
+  input:  [{Msg: "user=ada;code=200;action=login"}]
+  expect: [{Msg: "user=ada;code=200;action=login", user: "ada", code: 200}]
+
+- name: parse_kv_missing_key_null
+  query: "source | parse-kv Msg as (user:string, missing:string) with (pair_delimiter=';', kv_delimiter='=')"
+  input:  [{Msg: "user=ada"}]
+  expect: [{Msg: "user=ada", user: "ada", missing: null}]

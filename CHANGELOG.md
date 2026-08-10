@@ -7,7 +7,18 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **M2 progress:** `parse` and `parse-where` operators (`simple` + `regex`
+- **Operators:** `let` (scalar bindings), `print` (row generator source),
+  `project-reorder`, and **`parse-kv`** (key/value extraction, *beyond* the DCR
+  baseline — [docs](https://learn.microsoft.com/en-us/kusto/query/parse-kv-operator)),
+  with `pair_delimiter`/`kv_delimiter`/`quote` options.
+- **More stateless functions:** `trim`/`trim_start`/`trim_end`, `strcat_array`,
+  `reverse`, `sqrt`, `tohex`, `array_index_of`, `array_slice`, `bag_keys`,
+  `set_union`/`set_intersect`/`set_difference`, `format_datetime`,
+  `datetime_diff`, `dayofweek`.
+- **Spec §5.7 survey** of further stateless-compatible operators and functions
+  (IP/URL/dynamic/datetime/hash families) to guide upcoming milestones.
+
+### Added (M2) `parse` and `parse-where` operators (`simple` + `regex`
   kinds; regex uses named groups with a greedy final column and DCR-style
   matching), `project-keep`, and the `columnifexists` function. New math/
   encoding/datetime functions (`abs`/`ceiling`/`floor`/`bin`/`round`/`sign`/
