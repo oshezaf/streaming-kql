@@ -476,3 +476,46 @@ def _startofday(v: Any) -> datetime | None:
     d = _dt(v)
     return d.replace(hour=0, minute=0, second=0, microsecond=0) if d else None
 
+
+@register("startofmonth")
+def _startofmonth(v: Any) -> datetime | None:
+    d = _dt(v)
+    return d.replace(day=1, hour=0, minute=0, second=0, microsecond=0) if d else None
+
+
+@register("startofyear")
+def _startofyear(v: Any) -> datetime | None:
+    d = _dt(v)
+    return d.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0) if d else None
+
+
+@register("dayofyear")
+def _dayofyear(v: Any) -> int | None:
+    d = _dt(v)
+    return d.timetuple().tm_yday if d else None
+
+
+_TIMESPAN_RE = re.compile(
+    r"^\s*(-?\d+(?:\.\d+)?)\s*(d|h|m|s|ms|microsecond|tick)?\s*$", re.IGNORECASE)
+_TIMESPAN_UNIT = {"d": "days", "h": "hours", "m": "minutes", "s": "seconds",
+                  "ms": "milliseconds"}
+
+
+@register("totimespan")
+def _totimespan(v: Any) -> Any:
+    from datetime import timedelta
+    if v is None or v == "":
+        return None
+    if isinstance(v, timedelta):
+        return v
+    m = _TIMESPAN_RE.match(_s(v))
+    if not m:
+        return None
+    amount = float(m.group(1))
+    unit = (m.group(2) or "d").lower()
+    kw = _TIMESPAN_UNIT.get(unit)
+    if kw is None:
+        return None
+    return timedelta(**{kw: amount})
+
+

@@ -7,7 +7,19 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **Project scaffold (M0).** Pure-Python package `streaming_kql`, Apache-2.0.
+- **M2 progress:** `parse` and `parse-where` operators (`simple` + `regex`
+  kinds; regex uses named groups with a greedy final column and DCR-style
+  matching), `project-keep`, and the `columnifexists` function. New math/
+  encoding/datetime functions (`abs`/`ceiling`/`floor`/`bin`/`round`/`sign`/
+  `pow`/`exp*`/`log*`/`isnan`/`isinf`/`isfinite`, `hash_sha256`,
+  `base64_encodestring`/`base64_decodestring`, `extract_all`, `array_concat`/
+  `pack`/`pack_array`, `getyear`/`getmonth`/`dayofmonth`/`dayofyear`/`hourofday`/
+  `startofday`/`startofmonth`/`startofyear`, `totimespan`). Data-driven cases
+  added for all of the above.
+- **Release workflow** (`.github/workflows/release.yml`): build sdist+wheel and
+  publish to PyPI via **trusted publishing (OIDC)** on `v*` tags.
+
+### Project scaffold (M0/M1)
 - **Parser: Lark grammar + Transformer** (declarative, pure-Python) lowering to a
   parser-agnostic AST — chosen over a hand-written parser to scale toward the
   full DCR surface and a future stateful extension.

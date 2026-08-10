@@ -385,10 +385,10 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
 **Statements:** ◐ `source` · ☐ `print` · ☐ `let`
 
 **Tabular (DCR baseline):** ✅ `where` · ✅ `extend` · ✅ `project` · ✅
-`project-away` · ✅ `project-rename` · ☐ `parse` · ☐ `parse-where` · ☐ `print` ·
-☐ `datatable` · ☐ `columnifexists`
+`project-away` · ✅ `project-rename` · ✅ `parse` · ✅ `parse-where` · ✅
+`columnifexists` · ☐ `print` · ☐ `datatable`
 
-**Tabular (stateless ext):** ☐ `project-keep` · ☐ `project-reorder`
+**Tabular (stateless ext):** ✅ `project-keep` · ☐ `project-reorder`
 
 **Tabular (deferred, per-operator):** ☐ `mv-expand` · ☐ `bag_unpack` · ☐
 `take`/`limit` · ☐ `sample`
@@ -405,14 +405,14 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
 **Dynamic/array:** ◐ `parse_json` `array_length` · ☐ `array_concat` `pack`
 `pack_array` `parse_xml` `zip`
 
-**Math:** ☐ `abs` `bin`/`floor` `ceiling` `exp` `exp2` `exp10` `isfinite` `isinf`
+**Math:** ✅ `abs` `bin`/`floor` `ceiling` `exp` `exp2` `exp10` `isfinite` `isinf`
 `isnan` `log` `log2` `log10` `pow` `round` `sign`
 
-**Conditional:** ◐ `iif`/`iff` `case` `coalesce` `max_of` `min_of`
+**Conditional:** ✅ `iif`/`iff` `case` `coalesce` `max_of` `min_of`
 
-**String:** ◐ `strcat` `strcat_delim` `strlen` `substring` `split` `replace`
-`extract` `indexof` `countof` `isempty` `isnotempty` `tolower` `toupper` · ☐
-`base64_encodestring` `base64_decodestring` `extract_all` `hash_sha256`
+**String:** ✅ `strcat` `strcat_delim` `strlen` `substring` `split` `replace`
+`replace_regex` `extract` `extract_all` `indexof` `countof` `isempty` `isnotempty`
+`tolower` `toupper` `base64_encodestring` `base64_decodestring` `hash_sha256`
 
 **Type:** ◐ `gettype` `isnull` `isnotnull`
 

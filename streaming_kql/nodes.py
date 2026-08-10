@@ -100,10 +100,33 @@ class ProjectAway(Operator):
 
 
 @dataclass(frozen=True)
+class ProjectKeep(Operator):
+    names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ProjectRename(Operator):
     pairs: tuple[tuple[str, str], ...]  # (new_name, old_name)
 
 
 @dataclass(frozen=True)
+class ParseSeg:
+    """One segment of a ``parse`` pattern: a literal, a wildcard, or a column."""
+
+    kind: str                 # 'lit' | 'star' | 'col'
+    value: str = ""           # literal text (lit) or column name (col)
+    col_type: str | None = None  # optional KQL type for a column segment
+
+
+@dataclass(frozen=True)
+class Parse(Operator):
+    source: Expr
+    kind: str                 # 'simple' | 'regex' | 'relaxed'
+    segments: tuple[ParseSeg, ...]
+    drop_unmatched: bool = False  # True for ``parse-where`` (drop non-matching rows)
+
+
+@dataclass(frozen=True)
 class Query:
     operators: tuple[Operator, ...] = field(default_factory=tuple)
+

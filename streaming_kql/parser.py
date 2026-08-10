@@ -27,9 +27,12 @@ from .nodes import (
     Index,
     Literal,
     Member,
+    Parse,
+    ParseSeg,
     Project,
     ProjectAway,
     ProjectItem,
+    ProjectKeep,
     ProjectRename,
     Query,
     Unary,
@@ -48,6 +51,7 @@ _DEFERRED_OPERATORS = {"mv-expand", "mv-expand-array", "bag_unpack", "evaluate",
                        "take", "limit", "sample"}
 _SUPPORTED_OPERATORS = {
     "where", "filter", "extend", "project", "project-away", "project-rename",
+    "project-keep", "parse", "parse-where",
 }
 
 _GRAMMAR = r"""
@@ -57,7 +61,9 @@ start: "source" ("|" operator)*
          | extend_op
          | project_op
          | project_away_op
+         | project_keep_op
          | project_rename_op
+         | parse_op
 
 where_op: ("where"|"filter") expr
 extend_op: "extend" assignment ("," assignment)*
@@ -66,8 +72,15 @@ project_op: "project" project_item ("," project_item)*
 ?project_item: NAME "=" expr -> project_assign
              | NAME          -> project_keep
 project_away_op: PROJECT_AWAY NAME ("," NAME)*
+project_keep_op: PROJECT_KEEP NAME ("," NAME)*
 project_rename_op: PROJECT_RENAME rename_pair ("," rename_pair)*
 rename_pair: NAME "=" NAME
+parse_op: PARSE_KW parse_kind? expr "with" parse_seg+
+parse_kind: "kind" "=" NAME
+?parse_seg: SQSTRING -> pseg_lit
+          | DQSTRING -> pseg_lit
+          | "*"      -> pseg_star
+          | NAME (":" NAME)? -> pseg_col
 
 ?expr: or_expr
 ?or_expr: and_expr | or_expr "or" and_expr -> or_
@@ -97,7 +110,9 @@ exprlist: expr ("," expr)+
 COMP.2: /==|!=|<=|>=|=~|!~|<|>/
 STROP.2: /!?(has_cs|has|contains_cs|contains|startswith_cs|startswith|endswith_cs|endswith|in)\b/
 PROJECT_AWAY.2: /project-away\b/
+PROJECT_KEEP.2: /project-keep\b/
 PROJECT_RENAME.2: /project-rename\b/
+PARSE_KW.2: /parse-where\b|parse\b/
 NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
 NUMBER: /\d+(\.\d+)?([eE][+-]?\d+)?/
 DQSTRING: /"([^"\\]|\\.)*"/
@@ -152,12 +167,41 @@ class _ToAst(Transformer):
         names = tuple(str(t) for t in ch if isinstance(t, Token) and t.type == "NAME")
         return ProjectAway(names)
 
+    def project_keep_op(self, ch: list) -> ProjectKeep:
+        names = tuple(str(t) for t in ch if isinstance(t, Token) and t.type == "NAME")
+        return ProjectKeep(names)
+
     def project_rename_op(self, ch: list) -> ProjectRename:
         pairs = tuple(c for c in ch if isinstance(c, tuple))
         return ProjectRename(pairs)
 
     def rename_pair(self, ch: list) -> tuple[str, str]:
         return (str(ch[0]), str(ch[1]))
+
+    # parse operator
+    def parse_kind(self, ch: list) -> str:
+        return str(ch[0]).lower()
+
+    def pseg_lit(self, ch: list) -> ParseSeg:
+        return ParseSeg("lit", _unescape(str(ch[0])))
+
+    def pseg_star(self, ch: list) -> ParseSeg:
+        return ParseSeg("star")
+
+    def pseg_col(self, ch: list) -> ParseSeg:
+        col_type = str(ch[1]) if len(ch) > 1 else None
+        return ParseSeg("col", str(ch[0]), col_type)
+
+    def parse_op(self, ch: list) -> Parse:
+        kw = str(ch[0]).lower()
+        rest = ch[1:]
+        kind = "simple"
+        if rest and isinstance(rest[0], str):
+            kind = rest[0]
+            rest = rest[1:]
+        source = rest[0]
+        segs = tuple(s for s in rest[1:] if isinstance(s, ParseSeg))
+        return Parse(source, kind, segs, drop_unmatched=(kw == "parse-where"))
 
     # expressions
     def or_(self, ch: list) -> Binary:

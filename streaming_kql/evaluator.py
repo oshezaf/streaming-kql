@@ -26,8 +26,10 @@ from .nodes import (
     Literal,
     Member,
     Operator,
+    Parse,
     Project,
     ProjectAway,
+    ProjectKeep,
     ProjectRename,
     Query,
     Unary,
@@ -263,6 +265,16 @@ def _compile_call(node: Call, opts: Options) -> Callable[[Record], Any]:
                 return opts.clock() - v
             return None
         return _ago
+    if name == "columnifexists":
+        col_fn = argfns[0] if argfns else (lambda e: None)
+        default_fn = argfns[1] if len(argfns) > 1 else (lambda e: None)
+
+        def _cie(env: Record) -> Any:
+            cn = col_fn(env)
+            if isinstance(cn, str) and cn in env:
+                return env[cn]
+            return default_fn(env)
+        return _cie
 
     fn = fns.get(name)
     if fn is None:
@@ -280,9 +292,105 @@ def _compile_call(node: Call, opts: Options) -> Callable[[Record], Any]:
     return _call
 
 
+# --- parse operator ----------------------------------------------------------
+def _cast(raw: Any, col_type: str | None) -> Any:
+    if raw is None:
+        return None
+    if col_type in (None, "string", "guid"):
+        return raw
+    if col_type in ("long", "int"):
+        return fns._toint(raw)
+    if col_type in ("real", "double", "decimal"):
+        return fns._toreal(raw)
+    if col_type == "datetime":
+        return fns._todatetime(raw)
+    if col_type in ("bool", "boolean"):
+        return fns._tobool(raw)
+    return raw
+
+
+def _simple_match(segments: tuple, text: str) -> dict[str, Any] | None:
+    result: dict[str, Any] = {}
+    pos = 0
+    pending = None  # a 'col'/'star' ParseSeg awaiting its end boundary
+    cap_start = 0
+    for seg in segments:
+        if seg.kind == "lit":
+            idx = text.find(seg.value, pos)
+            if idx == -1:
+                return None
+            if pending is not None:
+                if pending.kind == "col":
+                    result[pending.value] = _cast(text[cap_start:idx], pending.col_type)
+                pending = None
+            pos = idx + len(seg.value)
+        else:  # col or star
+            if pending is not None and pending.kind == "col":
+                result[pending.value] = _cast("", pending.col_type)
+            pending = seg
+            cap_start = pos
+    if pending is not None and pending.kind == "col":
+        result[pending.value] = _cast(text[cap_start:], pending.col_type)
+    return result
+
+
+def _build_regex_matcher(segments: tuple) -> Callable[[str], dict[str, Any] | None]:
+    last_col_idx = max((i for i, s in enumerate(segments) if s.kind == "col"),
+                       default=-1)
+    parts: list[str] = []
+    types: dict[str, str | None] = {}
+    for i, seg in enumerate(segments):
+        if seg.kind == "lit":
+            parts.append(seg.value)
+        elif seg.kind == "star":
+            parts.append("(?:.*?)")
+        else:
+            greedy = ".*" if i == last_col_idx else ".*?"
+            parts.append(f"(?P<{seg.value}>{greedy})")
+            types[seg.value] = seg.col_type
+    pattern = "".join(parts)
+    try:
+        rx = re.compile(pattern, re.DOTALL)
+    except re.error:
+        rx = None
+
+    def _match(text: str) -> dict[str, Any] | None:
+        if rx is None:
+            return None
+        m = rx.search(text)
+        if not m:
+            return None
+        return {name: _cast(m.group(name), types[name]) for name in types}
+
+    return _match
+
+
+def _compile_parse(op: Parse, opts: Options) -> OpFn:
+    src = compile_expr(op.source, opts)
+    col_segs = [s for s in op.segments if s.kind == "col"]
+    if op.kind == "regex":
+        matcher = _build_regex_matcher(op.segments)
+    else:
+        def matcher(text: str) -> dict[str, Any] | None:
+            return _simple_match(op.segments, text)
+
+    def _parse(rec: Record) -> Iterable[Record]:
+        cols = matcher(fns._s(src(rec)))
+        out = dict(rec)
+        if cols is None:
+            if op.drop_unmatched:
+                return ()
+            for s in col_segs:
+                out[s.value] = None
+            return (out,)
+        out.update(cols)
+        return (out,)
+
+    return _parse
+
+
 # --- operator compilation ----------------------------------------------------
 OpFn = Callable[[Record], Iterable[Record]]
-
 
 def _compile_operator(op: Operator, opts: Options) -> OpFn:
     if isinstance(op, Where):
@@ -310,6 +418,11 @@ def _compile_operator(op: Operator, opts: Options) -> OpFn:
     if isinstance(op, ProjectAway):
         drop = set(op.names)
         return lambda rec: ({k: v for k, v in rec.items() if k not in drop},)
+    if isinstance(op, ProjectKeep):
+        keep = set(op.names)
+        return lambda rec: ({k: v for k, v in rec.items() if k in keep},)
+    if isinstance(op, Parse):
+        return _compile_parse(op, opts)
     if isinstance(op, ProjectRename):
         pairs = op.pairs
 

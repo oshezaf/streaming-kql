@@ -1,0 +1,38 @@
+# parse operator (simple + regex), parse-where, project-keep, columnifexists
+- name: parse_simple
+  query: "source | parse Trace with 'user=' User ' action=' Action ' code=' Code:long"
+  input:  [{Trace: "user=ada action=login code=200"}]
+  expect: [{Trace: "user=ada action=login code=200", User: "ada", Action: "login", Code: 200}]
+
+- name: parse_simple_leading_star
+  query: "source | parse Line with * 'id=' Id ';' *"
+  input:  [{Line: "noise id=abc123; trailing"}]
+  expect: [{Line: "noise id=abc123; trailing", Id: "abc123"}]
+
+- name: parse_regex
+  query: "source | parse kind=regex Msg with 'status=' Status:long ' path=' Path"
+  input:  [{Msg: "status=404 path=/home"}]
+  expect: [{Msg: "status=404 path=/home", Status: 404, Path: "/home"}]
+
+- name: parse_no_match_keeps_row_nulls
+  query: "source | parse Trace with 'user=' User ' x'"
+  input:  [{Trace: "nothing here"}]
+  expect: [{Trace: "nothing here", User: null}]
+
+- name: parse_where_drops_nonmatching
+  query: "source | parse-where Trace with 'user=' User ' end'"
+  input:
+    - {Trace: "user=ada end"}
+    - {Trace: "no match at all"}
+  expect:
+    - {Trace: "user=ada end", User: "ada"}
+
+- name: project_keep
+  query: "source | project-keep Keep1, Keep2"
+  input:  [{Keep1: 1, Keep2: 2, Drop: 3}]
+  expect: [{Keep1: 1, Keep2: 2}]
+
+- name: columnifexists_present_and_missing
+  query: "source | extend A = columnifexists('Present', 'def'), B = columnifexists('Missing', 'def')"
+  input:  [{Present: "here"}]
+  expect: [{Present: "here", A: "here", B: "def"}]
