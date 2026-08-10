@@ -7,6 +7,11 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Timespan literals** (`1d`, `2h`, `30m`, `500ms`, `microseconds`, `ticks`)
+  compiled to `datetime.timedelta`, enabling datetime/timespan arithmetic such as
+  `now() - Timestamp`, `Timestamp + 30m`, and `where Created > ago(1d)`.
+- **`parse_xml`** scalar function — parses an XML string into a `dynamic` object
+  (attributes as `@name`, repeated children as lists, text as scalar/`#text`).
 - **`evaluate bag_unpack` operator** (1→1) — expands a `dynamic` bag column into
   columns, with an optional name prefix.
 - **Large stateless scalar-function batch** toward `0.1.0`:
@@ -51,6 +56,13 @@ follows [Semantic Versioning](https://semver.org/).
   added for all of the above.
 - **Release workflow** (`.github/workflows/release.yml`): build sdist+wheel and
   publish to PyPI via **trusted publishing (OIDC)** on `v*` tags.
+
+### Fixed
+- **Docs:** reclassified `parse-where` from the DCR baseline to *stateless
+  extensions (beyond DCR)*. The official Azure Monitor transformations operator
+  list (`extend`, `project`, `print`, `where`, `parse`, `project-away`,
+  `project-rename`, `datatable`, `columnifexists`) does **not** include
+  `parse-where`; it remains fully supported here as an extension.
 
 ### Project scaffold (M0/M1)
 - **Parser: Lark grammar + Transformer** (declarative, pure-Python) lowering to a

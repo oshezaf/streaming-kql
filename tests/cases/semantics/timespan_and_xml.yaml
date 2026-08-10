@@ -1,0 +1,42 @@
+# timespan literals + datetime/timespan arithmetic operators, parse_xml
+- name: timespan_literal_arithmetic
+  query: "source | extend Later = format_datetime(todatetime(t) + 1h, 'yyyy-MM-dd HH:mm:ss'), Earlier = format_datetime(todatetime(t) - 30m, 'yyyy-MM-dd HH:mm:ss')"
+  input:  [{t: "2021-01-01T10:00:00Z"}]
+  expect:
+    - t: "2021-01-01T10:00:00Z"
+      Later: "2021-01-01 11:00:00"
+      Earlier: "2021-01-01 09:30:00"
+
+- name: datetime_difference_is_timespan
+  query: "source | where todatetime(a) - todatetime(b) > 1h"
+  input:
+    - {a: "2021-01-01T12:00:00Z", b: "2021-01-01T10:00:00Z"}
+    - {a: "2021-01-01T10:30:00Z", b: "2021-01-01T10:00:00Z"}
+  expect:
+    - {a: "2021-01-01T12:00:00Z", b: "2021-01-01T10:00:00Z"}
+
+- name: ago_with_timespan_literal
+  query: "source | where Created > ago(1d)"
+  options: {now: "2021-01-10T00:00:00Z"}
+  input:
+    - {Created: "2021-01-09T12:00:00Z"}
+    - {Created: "2021-01-01T00:00:00Z"}
+  schema: {Created: datetime}
+  expect:
+    - {Created: "2021-01-09T12:00:00Z"}
+  skip: "Created values are strings; requires schema-driven datetime coercion (later milestone)"
+
+- name: timespan_multiply
+  query: "source | extend d = format_timespan(2h * 3, '')"
+  input:  [{}]
+  skip: "format_timespan not implemented; timespan*number arithmetic covered elsewhere"
+
+- name: parse_xml_basic
+  query: "source | extend x = parse_xml(doc) | extend v = tostring(x.root.item)"
+  input:  [{doc: "<root><item>hello</item></root>"}]
+  expect: [{doc: "<root><item>hello</item></root>", x: {root: {item: "hello"}}, v: "hello"}]
+
+- name: parse_xml_attrs
+  query: "source | extend x = parse_xml(doc)"
+  input:  [{doc: "<a id=\"1\"><b>t</b></a>"}]
+  expect: [{doc: "<a id=\"1\"><b>t</b></a>", x: {a: {"@id": "1", b: "t"}}}]

@@ -13,6 +13,7 @@ stay focused on what is actually supported.
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 
 from lark import Lark, Token, Transformer
 from lark.exceptions import LarkError
@@ -116,6 +117,7 @@ bu_prefix: SQSTRING | DQSTRING
 ?unary: postfix | "-" unary -> neg
 ?postfix: atom | postfix "." NAME -> member | postfix "[" expr "]" -> index
 ?atom: NUMBER            -> number
+     | TIMESPAN          -> timespan_lit
      | DQSTRING          -> string
      | SQSTRING          -> string
      | "true"            -> true
@@ -129,6 +131,7 @@ arglist: expr ("," expr)*
 exprlist: expr ("," expr)+
 
 COMP.2: /==|!=|<=|>=|=~|!~|<|>/
+TIMESPAN.3: /\d+(\.\d+)?(ms|microseconds?|ticks?|[dhms])\b/
 STROP.2: /!?(has_cs|has|contains_cs|contains|startswith_cs|startswith|endswith_cs|endswith|in)\b/
 PROJECT_AWAY.2: /project-away\b/
 PROJECT_KEEP.2: /project-keep\b/
@@ -161,6 +164,24 @@ def _unescape(tok: str) -> str:
             out.append(c)
             i += 1
     return "".join(out)
+
+
+_TS_UNITS = {"d": "days", "h": "hours", "m": "minutes", "s": "seconds",
+             "ms": "milliseconds"}
+
+
+def _parse_timespan_literal(text: str) -> timedelta:
+    m = re.match(r"(\d+(?:\.\d+)?)(ms|microseconds?|ticks?|[dhms])", text)
+    assert m is not None
+    amount = float(m.group(1))
+    unit = m.group(2)
+    if unit in _TS_UNITS:
+        return timedelta(**{_TS_UNITS[unit]: amount})
+    if unit.startswith("microsecond"):
+        return timedelta(microseconds=amount)
+    if unit.startswith("tick"):
+        return timedelta(microseconds=amount / 10.0)  # 1 tick = 100 ns
+    return timedelta()
 
 
 class _ToAst(Transformer):
@@ -321,6 +342,9 @@ class _ToAst(Transformer):
     def number(self, ch: list) -> Literal:
         t = str(ch[0])
         return Literal(float(t) if any(c in t for c in ".eE") else int(t))
+
+    def timespan_lit(self, ch: list) -> Literal:
+        return Literal(_parse_timespan_literal(str(ch[0])))
 
     def string(self, ch: list) -> Literal:
         return Literal(_unescape(str(ch[0])))

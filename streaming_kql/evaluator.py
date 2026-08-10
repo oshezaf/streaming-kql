@@ -113,7 +113,7 @@ def _arith(op: str, a: Any, b: Any) -> Any:
             return None if b == 0 else a / b
         if op == "%":
             return None if b == 0 else a % b
-    except TypeError:
+    except (TypeError, ZeroDivisionError):
         return None
     return None
 

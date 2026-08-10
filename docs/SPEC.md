@@ -176,9 +176,10 @@ plus remaining stateless operators. Tracked in Appendix A.
 ### 5.2 Tabular operators
 
 **DCR baseline:** `where`/`filter`, `extend`, `project`, `project-away`,
-`project-rename`, `parse`/`parse-where`, `print`, `datatable`, `columnifexists`.
+`project-rename`, `parse`, `print`, `datatable`, `columnifexists`.
 
-**Stateless extensions (post-baseline):** `project-keep`, `project-reorder`.
+**Stateless extensions (post-baseline):** `parse-where`, `project-keep`,
+`project-reorder`.
 
 **Deferred — evaluate individually (not committed):** `mv-expand`, `mv-expand`
 with `bag_unpack`/`evaluate bag_unpack`, `take`/`limit`, `sample`. These are 1→N
@@ -434,11 +435,11 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
 **Statements:** ✅ `source` · ✅ `print` · ✅ `let`
 
 **Tabular (DCR baseline):** ✅ `where` · ✅ `extend` · ✅ `project` · ✅
-`project-away` · ✅ `project-rename` · ✅ `parse` · ✅ `parse-where` · ✅
-`columnifexists` · ☐ `datatable`
+`project-away` · ✅ `project-rename` · ✅ `parse` · ✅ `columnifexists` · ☐
+`datatable`
 
-**Tabular (stateless ext):** ✅ `project-keep` · ✅ `project-reorder` · ✅
-`parse-kv` (beyond DCR) · ✅ `evaluate bag_unpack`
+**Tabular (stateless ext, beyond DCR):** ✅ `parse-where` · ✅ `project-keep` ·
+✅ `project-reorder` · ✅ `parse-kv` · ✅ `evaluate bag_unpack`
 
 **Tabular (deferred, per-operator):** ☐ `mv-expand` · ☐ `take`/`limit` · ☐
 `sample`
@@ -459,8 +460,8 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
 **Dynamic/array:** ✅ `parse_json` `array_length` `array_concat` `array_index_of`
 `array_slice` `array_sort_asc`/`desc` `array_reverse` `array_sum`
 `array_rotate_left`/`right` `array_split` `pack` `pack_array` `bag_keys`
-`bag_merge` `bag_remove_keys` `set_union`/`intersect`/`difference` · ☐
-`parse_xml` `zip`
+`bag_merge` `bag_remove_keys` `set_union`/`intersect`/`difference` · ✅
+`parse_xml` · ☐ `zip`
 
 **IP / URL:** ✅ `parse_ipv4` `ipv4_is_in_range` `ipv4_is_private` `ipv4_compare`
 `ipv4_netmask_suffix` `format_ipv4` · ✅ `parse_url` `parse_urlquery`
@@ -484,7 +485,7 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
 
 **Bitwise:** ✅ `binary_and/or/not/xor/shift_left/shift_right`
 
-**Special:** ✅ `parse_cef_dictionary` · ☐ `parse_xml` · ✗ `geo_location` (not planned)
+**Special:** ✅ `parse_cef_dictionary` · ✅ `parse_xml` · ✗ `geo_location` (not planned)
 
 ---
 

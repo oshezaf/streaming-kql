@@ -16,6 +16,7 @@ import math as _math
 import re
 import urllib.parse as _urlparse
 import uuid as _uuid
+import xml.etree.ElementTree as _ET
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -269,6 +270,38 @@ def _parse_json(v: Any) -> Any:
         return json.loads(_s(v))
     except (ValueError, TypeError):
         return None
+
+
+def _xml_to_obj(el: _ET.Element) -> Any:
+    obj: dict[str, Any] = {}
+    for k, val in el.attrib.items():
+        obj[f"@{k}"] = val
+    for child in list(el):
+        co = _xml_to_obj(child)
+        if child.tag in obj:
+            if not isinstance(obj[child.tag], list):
+                obj[child.tag] = [obj[child.tag]]
+            obj[child.tag].append(co)
+        else:
+            obj[child.tag] = co
+    text = (el.text or "").strip()
+    if text:
+        if obj:
+            obj["#text"] = text
+        else:
+            return text
+    return obj if obj else None
+
+
+@register("parse_xml")
+def _parse_xml(v: Any) -> Any:
+    if v is None:
+        return None
+    try:
+        root = _ET.fromstring(_s(v))
+    except _ET.ParseError:
+        return None
+    return {root.tag: _xml_to_obj(root)}
 
 
 @register("array_length")
