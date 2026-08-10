@@ -1,0 +1,35 @@
+# where operator cases
+- name: where_gt_keeps
+  query: "source | where Price > 80"
+  input:  [{Symbol: MSFT, Price: 90}]
+  expect: [{Symbol: MSFT, Price: 90}]
+
+- name: where_gt_filters_out
+  query: "source | where Price > 80"
+  input:  [{Symbol: MSFT, Price: 10}]
+  expect: []
+
+- name: where_and_or
+  query: "source | where Symbol == 'MSFT' and (Price > 80 or Price < 10)"
+  input:
+    - {Symbol: MSFT, Price: 5}
+    - {Symbol: MSFT, Price: 50}
+    - {Symbol: AAPL, Price: 5}
+  expect:
+    - {Symbol: MSFT, Price: 5}
+
+- name: where_has_word
+  query: "source | where Message has 'error'"
+  input:
+    - {Message: "an error occurred"}
+    - {Message: "errors are terrible"}
+  expect:
+    - {Message: "an error occurred"}
+
+- name: where_in_list
+  query: "source | where Symbol in ('MSFT', 'AAPL')"
+  input:
+    - {Symbol: MSFT}
+    - {Symbol: GOOG}
+  expect:
+    - {Symbol: MSFT}

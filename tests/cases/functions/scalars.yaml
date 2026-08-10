@@ -1,0 +1,41 @@
+# scalar function coverage
+- name: math_basics
+  query: "source | extend A = abs(-3), B = round(3.14159, 2), C = floor(7.8), D = ceiling(7.1), E = sign(-5)"
+  input:  [{}]
+  expect: [{A: 3, B: 3.14, C: 7, D: 8, E: -1}]
+
+- name: string_funcs
+  query: "source | extend U = toupper(s), L = tolower(s), N = strlen(s), Sub = substring(s, 0, 3)"
+  input:  [{s: "Hello"}]
+  expect: [{s: "Hello", U: "HELLO", L: "hello", N: 5, Sub: "Hel"}]
+
+- name: extract_group
+  query: "source | extend Ver = extract('v([0-9]+)', 1, s)"
+  input:  [{s: "release v42 build"}]
+  expect: [{s: "release v42 build", Ver: "42"}]
+
+- name: coalesce_and_iif
+  query: "source | extend X = coalesce(a, b, 'fallback'), Y = iif(n > 0, 'pos', 'neg')"
+  input:  [{a: null, b: "", n: 5}]
+  expect: [{a: null, b: "", n: 5, X: "fallback", Y: "pos"}]
+
+- name: hash_and_base64
+  query: "source | extend E = base64_encodestring(s), D = base64_decodestring(base64_encodestring(s))"
+  input:  [{s: "hi"}]
+  expect: [{s: "hi", E: "aGk=", D: "hi"}]
+
+- name: split_and_index
+  query: "source | extend Host = split(email, '@', 1)"
+  input:  [{email: "ada@rebels.org"}]
+  expect: [{email: "ada@rebels.org", Host: "rebels.org"}]
+
+- name: case_function
+  query: "source | extend Band = case(n < 10, 'low', n < 100, 'mid', 'high')"
+  input:
+    - {n: 5}
+    - {n: 50}
+    - {n: 500}
+  expect:
+    - {n: 5, Band: low}
+    - {n: 50, Band: mid}
+    - {n: 500, Band: high}

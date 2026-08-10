@@ -1,0 +1,34 @@
+# extend / project / project-away / project-rename
+- name: extend_strcat
+  query: "source | extend Full = strcat(First, ' ', Last)"
+  input:  [{First: Ada, Last: Lovelace}]
+  expect: [{First: Ada, Last: Lovelace, Full: "Ada Lovelace"}]
+
+- name: extend_chained_refs_previous
+  query: "source | extend A = 2, B = A + 3"
+  input:  [{}]
+  expect: [{A: 2, B: 5}]
+
+- name: project_selects_and_computes
+  query: "source | project Symbol, Doubled = Price * 2"
+  input:  [{Symbol: MSFT, Price: 21, Extra: drop}]
+  expect: [{Symbol: MSFT, Doubled: 42}]
+
+- name: project_away
+  query: "source | project-away Secret, Temp"
+  input:  [{Keep: 1, Secret: x, Temp: y}]
+  expect: [{Keep: 1}]
+
+- name: project_rename
+  query: "source | project-rename NewName = OldName"
+  input:  [{OldName: v, Other: 2}]
+  expect: [{NewName: v, Other: 2}]
+
+- name: extend_conditionals
+  query: "source | extend Band = iif(Price > 50, 'high', 'low')"
+  input:
+    - {Price: 90}
+    - {Price: 10}
+  expect:
+    - {Price: 90, Band: high}
+    - {Price: 10, Band: low}

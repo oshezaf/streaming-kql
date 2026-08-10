@@ -1,0 +1,24 @@
+# dynamic data handling (parse_json + property access) and unsupported rejection
+- name: parse_json_and_access
+  query: "source | extend ctx = parse_json(AdditionalContext) | extend Level = toint(ctx.Level) | project Level, Device = tostring(ctx.DeviceID)"
+  schema: {Message: string, AdditionalContext: dynamic}
+  input:
+    - {Message: "hi", AdditionalContext: '{"Level": 2, "DeviceID": "apollo13"}'}
+  expect:
+    - {Level: 2, Device: "apollo13"}
+
+- name: summarize_is_rejected
+  query: "source | summarize count() by Symbol"
+  expect_error: KqlUnsupportedError
+
+- name: sort_is_rejected
+  query: "source | sort by Price"
+  expect_error: KqlUnsupportedError
+
+- name: mv_expand_deferred
+  query: "source | mv-expand Tag = Tags"
+  expect_error: KqlUnsupportedError
+
+- name: unknown_operator
+  query: "source | frobnicate X"
+  expect_error: KqlCompileError

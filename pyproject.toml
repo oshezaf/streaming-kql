@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "streaming-kql"
+version = "0.0.1"
+description = "Evaluate the stateless subset of Kusto Query Language (KQL) over a stream of events, one record at a time — pure Python, no external runtime."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Ofer Shezaf" }]
+keywords = ["kql", "kusto", "streaming", "log", "transform", "asim", "sentinel", "azure-monitor"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: System :: Logging",
+    "Topic :: Text Processing :: Filters",
+]
+dependencies = ["lark>=1.1"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "pyyaml>=6",
+    "hypothesis>=6",
+    "ruff>=0.5",
+    "mypy>=1.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/oshezaf/streaming-kql"
+Repository = "https://github.com/oshezaf/streaming-kql"
+Issues = "https://github.com/oshezaf/streaming-kql/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["streaming_kql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_ignores = true
+disallow_untyped_defs = true
+packages = ["streaming_kql"]

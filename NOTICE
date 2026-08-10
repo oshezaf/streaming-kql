@@ -1,0 +1,16 @@
+streaming-kql
+Copyright 2026 Ofer Shezaf
+
+This product includes software design and reference implementation informed by:
+
+  Rx.KQL (https://github.com/microsoft/RxKql)
+  Copyright (c) Microsoft Corporation
+  Licensed under the Apache License, Version 2.0
+
+KQL language semantics follow the public Microsoft Kusto Query Language and
+Azure Monitor data collection transformation documentation:
+
+  https://learn.microsoft.com/en-us/kusto/query/
+  https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-kql
+
+Neither this project nor its author is affiliated with or endorsed by Microsoft.

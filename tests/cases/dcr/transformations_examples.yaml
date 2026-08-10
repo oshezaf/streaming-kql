@@ -1,0 +1,29 @@
+# End-to-end examples adapted from the Azure Monitor transformations docs.
+# https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-kql
+- name: dcr_dynamic_data_handling
+  query: |
+    source
+    | extend parsedAdditionalContext = parse_json(AdditionalContext)
+    | extend Level = toint(parsedAdditionalContext.Level)
+    | extend DeviceId = tostring(parsedAdditionalContext.DeviceID)
+    | project TimeGenerated, Level, DeviceId
+  schema: {TimeGenerated: datetime, Message: string, AdditionalContext: dynamic}
+  input:
+    - TimeGenerated: "2021-11-07T09:13:06.570354Z"
+      Message: "Houston, we have a problem"
+      AdditionalContext: '{"Level": 2, "DeviceID": "apollo13"}'
+  expect:
+    - TimeGenerated: "2021-11-07T09:13:06.570354Z"
+      Level: 2
+      DeviceId: "apollo13"
+
+- name: dcr_filter_and_project
+  query: |
+    source
+    | where Message has 'error'
+    | project TimeGenerated, Message
+  input:
+    - {TimeGenerated: "2021-11-07T09:13:06Z", Message: "an error occurred"}
+    - {TimeGenerated: "2021-11-07T09:14:00Z", Message: "all good"}
+  expect:
+    - {TimeGenerated: "2021-11-07T09:13:06Z", Message: "an error occurred"}
