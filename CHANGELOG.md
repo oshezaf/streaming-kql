@@ -7,6 +7,28 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **`evaluate bag_unpack` operator** (1→1) — expands a `dynamic` bag column into
+  columns, with an optional name prefix.
+- **Large stateless scalar-function batch** toward `0.1.0`:
+  - **IP:** `parse_ipv4`, `ipv4_is_in_range`, `ipv4_is_private`, `ipv4_compare`,
+    `ipv4_netmask_suffix`, `format_ipv4`.
+  - **URL:** `parse_url`, `parse_urlquery`, `url_encode`, `url_encode_component`,
+    `url_decode`.
+  - **Bitwise:** `binary_and/or/xor/not/shift_left/shift_right`.
+  - **Conversion/type:** `toguid`, `todecimal`, `isascii`.
+  - **Hash:** `hash_md5`, `hash_sha1`.
+  - **Math:** `sin`/`cos`/`tan`/`asin`/`acos`/`atan`/`atan2`, `degrees`/`radians`,
+    `gamma`/`log_gamma`, `gcd`/`lcm`.
+  - **String:** `strcmp`, `translate`, `indexof_regex`, `parse_csv`.
+  - **DateTime:** `make_datetime`, `make_timespan`, `datetime_add`,
+    `datetime_part`, `endofday`/`endofmonth`/`endofyear`, `weekofyear`,
+    `unixtime_seconds`/`milliseconds`/`microseconds`_todatetime.
+  - **Dynamic/array:** `bag_merge`, `bag_remove_keys`, `array_sort_asc`/`desc`,
+    `array_reverse`, `array_sum`, `array_rotate_left`/`right`, `array_split`.
+  - **Transformation-only:** `parse_cef_dictionary`.
+  Data-driven cases added for the batch.
+
+### Added (earlier)
 - **Operators:** `let` (scalar bindings), `print` (row generator source),
   `project-reorder`, and **`parse-kv`** (key/value extraction, *beyond* the DCR
   baseline — [docs](https://learn.microsoft.com/en-us/kusto/query/parse-kv-operator)),

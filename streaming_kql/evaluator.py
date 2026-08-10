@@ -16,6 +16,7 @@ from typing import Any
 from . import functions as fns
 from .errors import KqlCompileError, KqlEvalError
 from .nodes import (
+    BagUnpack,
     Binary,
     Call,
     Column,
@@ -467,6 +468,18 @@ def _compile_operator(op: Operator, opts: Options) -> OpFn:
         return _compile_parse(op, opts)
     if isinstance(op, ParseKv):
         return _compile_parsekv(op, opts)
+    if isinstance(op, BagUnpack):
+        col = op.column
+        prefix = op.prefix
+
+        def _bag_unpack(rec: Record) -> Iterable[Record]:
+            out = {k: v for k, v in rec.items() if k != col}
+            bag = rec.get(col)
+            if isinstance(bag, dict):
+                for k, v in bag.items():
+                    out[f"{prefix}{k}"] = v
+            return (out,)
+        return _bag_unpack
     if isinstance(op, ProjectRename):
         pairs = op.pairs
 

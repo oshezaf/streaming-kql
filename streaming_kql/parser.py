@@ -19,6 +19,7 @@ from lark.exceptions import LarkError
 
 from .errors import KqlCompileError, KqlUnsupportedError
 from .nodes import (
+    BagUnpack,
     Binary,
     Call,
     Column,
@@ -49,11 +50,12 @@ _STATEFUL_OPERATORS = {
     "count", "distinct", "sample-distinct", "mv-apply", "row_number",
 }
 # 1->N or bounded-state — deferred pending per-operator evaluation (SPEC §5.2).
-_DEFERRED_OPERATORS = {"mv-expand", "mv-expand-array", "bag_unpack", "evaluate",
+_DEFERRED_OPERATORS = {"mv-expand", "mv-expand-array", "bag_unpack",
                        "take", "limit", "sample"}
 _SUPPORTED_OPERATORS = {
     "where", "filter", "extend", "project", "project-away", "project-rename",
     "project-keep", "project-reorder", "parse", "parse-where", "parse-kv",
+    "evaluate",
 }
 _SOURCE_HEADS = {"source", "print", "let"}
 
@@ -76,6 +78,7 @@ print_op: "print" print_item ("," print_item)*
          | project_rename_op
          | parse_op
          | parsekv_op
+         | bagunpack_op
 
 where_op: ("where"|"filter") expr
 extend_op: "extend" assignment ("," assignment)*
@@ -97,6 +100,8 @@ parse_kind: "kind" "=" NAME
 parsekv_op: PARSEKV expr "as" "(" kv_col ("," kv_col)* ")" "with" "(" kv_opt ("," kv_opt)* ")"
 kv_col: NAME ":" NAME
 kv_opt: NAME "=" (SQSTRING|DQSTRING)
+bagunpack_op: "evaluate" "bag_unpack" "(" NAME ("," bu_prefix)? ")"
+bu_prefix: SQSTRING | DQSTRING
 
 ?expr: or_expr
 ?or_expr: and_expr | or_expr "or" and_expr -> or_
@@ -261,6 +266,14 @@ class _ToAst(Transformer):
         cols = tuple((c[1], c[2]) for c in ch if isinstance(c, tuple) and c[0] == "col")
         opts = tuple((c[1], c[2]) for c in ch if isinstance(c, tuple) and c[0] == "opt")
         return ParseKv(source, cols, opts)
+
+    def bu_prefix(self, ch: list) -> str:
+        return _unescape(str(ch[0]))
+
+    def bagunpack_op(self, ch: list) -> BagUnpack:
+        col = str(ch[0])
+        prefix = ch[1] if len(ch) > 1 and isinstance(ch[1], str) else ""
+        return BagUnpack(col, prefix)
 
     # expressions
     def or_(self, ch: list) -> Binary:

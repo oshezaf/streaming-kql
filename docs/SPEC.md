@@ -435,40 +435,56 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
 
 **Tabular (DCR baseline):** ✅ `where` · ✅ `extend` · ✅ `project` · ✅
 `project-away` · ✅ `project-rename` · ✅ `parse` · ✅ `parse-where` · ✅
-`columnifexists` · ☐ `print` · ☐ `datatable`
+`columnifexists` · ☐ `datatable`
 
 **Tabular (stateless ext):** ✅ `project-keep` · ✅ `project-reorder` · ✅
-`parse-kv` (beyond DCR)
+`parse-kv` (beyond DCR) · ✅ `evaluate bag_unpack`
 
-**Tabular (deferred, per-operator):** ☐ `mv-expand` · ☐ `bag_unpack` · ☐
-`take`/`limit` · ☐ `sample`
+**Tabular (deferred, per-operator):** ☐ `mv-expand` · ☐ `take`/`limit` · ☐
+`sample`
 
-**Scalar operators:** ◐ numerical · ☐ datetime/timespan arithmetic · ◐ string
+**Scalar operators:** ◐ numerical · ◐ datetime/timespan arithmetic · ◐ string
 (`==`,`!=`,`=~`,`!~`,`contains(_cs)`,`has(_cs)`,`startswith(_cs)`,`endswith(_cs)`,
-`matches regex`,`in`,`!in`) · ☐ `has_any`/`has_all` · ☐ bitwise
+`matches regex`,`in`,`!in`) · ☐ `has_any`/`has_all` · ✅ bitwise
 
 **Conversion:** ◐ `tobool` `todatetime` `todouble`/`toreal` `toint` `tolong`
-`tostring` · ☐ `toguid` `totimespan`
+`tostring` `toguid` `totimespan` `todecimal` `tohex`
 
-**DateTime/TimeSpan:** ◐ `now` `ago` · ☐ (rest)
+**DateTime/TimeSpan:** ✅ `now` `ago` `getyear` `getmonth` `dayofmonth` `dayofyear`
+`dayofweek` `hourofday` `weekofyear` `startofday`/`month`/`year`
+`endofday`/`month`/`year` `datetime_add` `datetime_diff` `datetime_part`
+`make_datetime` `make_timespan` `format_datetime` `totimespan`
+`unixtime_seconds`/`milliseconds`/`microseconds`_todatetime
 
-**Dynamic/array:** ◐ `parse_json` `array_length` · ☐ `array_concat` `pack`
-`pack_array` `parse_xml` `zip`
+**Dynamic/array:** ✅ `parse_json` `array_length` `array_concat` `array_index_of`
+`array_slice` `array_sort_asc`/`desc` `array_reverse` `array_sum`
+`array_rotate_left`/`right` `array_split` `pack` `pack_array` `bag_keys`
+`bag_merge` `bag_remove_keys` `set_union`/`intersect`/`difference` · ☐
+`parse_xml` `zip`
+
+**IP / URL:** ✅ `parse_ipv4` `ipv4_is_in_range` `ipv4_is_private` `ipv4_compare`
+`ipv4_netmask_suffix` `format_ipv4` · ✅ `parse_url` `parse_urlquery`
+`url_encode`/`url_encode_component`/`url_decode`
 
 **Math:** ✅ `abs` `bin`/`floor` `ceiling` `exp` `exp2` `exp10` `isfinite` `isinf`
 `isnan` `log` `log2` `log10` `pow` `round` `sign`
 
 **Conditional:** ✅ `iif`/`iff` `case` `coalesce` `max_of` `min_of`
 
-**String:** ✅ `strcat` `strcat_delim` `strlen` `substring` `split` `replace`
-`replace_regex` `extract` `extract_all` `indexof` `countof` `isempty` `isnotempty`
-`tolower` `toupper` `base64_encodestring` `base64_decodestring` `hash_sha256`
+**String:** ✅ `strcat` `strcat_delim` `strcat_array` `strlen` `substring` `split`
+`replace` `replace_regex` `extract` `extract_all` `indexof` `indexof_regex`
+`countof` `isempty` `isnotempty` `tolower` `toupper` `trim`/`trim_start`/`trim_end`
+`reverse` `strcmp` `translate` `parse_csv` `base64_encodestring`
+`base64_decodestring` `hash_sha256` `hash_md5` `hash_sha1`
 
-**Type:** ◐ `gettype` `isnull` `isnotnull`
+**Math (more):** ✅ `sqrt` `sin`/`cos`/`tan`/`asin`/`acos`/`atan`/`atan2`
+`degrees`/`radians` `gamma`/`log_gamma` `gcd`/`lcm`
 
-**Bitwise:** ☐ `binary_and/or/not/xor/shift_left/shift_right`
+**Type:** ◐ `gettype` `isnull` `isnotnull` `isascii`
 
-**Special:** ☐ `parse_cef_dictionary` · ✗ `geo_location` (not planned)
+**Bitwise:** ✅ `binary_and/or/not/xor/shift_left/shift_right`
+
+**Special:** ✅ `parse_cef_dictionary` · ☐ `parse_xml` · ✗ `geo_location` (not planned)
 
 ---
 

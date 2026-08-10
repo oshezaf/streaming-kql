@@ -7,12 +7,17 @@ is extensible at runtime via :func:`register` (exposed publicly as
 from __future__ import annotations
 
 import base64 as _base64
+import csv as _csv
+import decimal as _decimal
 import hashlib as _hashlib
+import ipaddress as _ipaddress
 import json
 import math as _math
 import re
+import urllib.parse as _urlparse
+import uuid as _uuid
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 _REGISTRY: dict[str, Callable[..., Any]] = {}
@@ -679,6 +684,476 @@ def _hashable(x: Any) -> Any:
         return x
     except TypeError:
         return _s(x)
+
+
+# --- bitwise -----------------------------------------------------------------
+@register("binary_and")
+def _binary_and(a: Any, b: Any) -> int | None:
+    x, y = _toint(a), _toint(b)
+    return None if x is None or y is None else x & y
+
+
+@register("binary_or")
+def _binary_or(a: Any, b: Any) -> int | None:
+    x, y = _toint(a), _toint(b)
+    return None if x is None or y is None else x | y
+
+
+@register("binary_xor")
+def _binary_xor(a: Any, b: Any) -> int | None:
+    x, y = _toint(a), _toint(b)
+    return None if x is None or y is None else x ^ y
+
+
+@register("binary_not")
+def _binary_not(a: Any) -> int | None:
+    x = _toint(a)
+    return None if x is None else ~x
+
+
+@register("binary_shift_left")
+def _binary_shift_left(a: Any, n: Any) -> int | None:
+    x, y = _toint(a), _toint(n)
+    return None if x is None or y is None else x << y
+
+
+@register("binary_shift_right")
+def _binary_shift_right(a: Any, n: Any) -> int | None:
+    x, y = _toint(a), _toint(n)
+    return None if x is None or y is None else x >> y
+
+
+# --- conversion / type -------------------------------------------------------
+@register("toguid")
+def _toguid(v: Any) -> str | None:
+    if v is None:
+        return None
+    try:
+        return str(_uuid.UUID(_s(v)))
+    except (ValueError, AttributeError):
+        return None
+
+
+@register("todecimal")
+def _todecimal(v: Any) -> Any:
+    if v is None or v == "":
+        return None
+    try:
+        return _decimal.Decimal(_s(v))
+    except (_decimal.InvalidOperation, ValueError):
+        return None
+
+
+@register("isascii")
+def _isascii(v: Any) -> bool:
+    return isinstance(v, str) and v.isascii()
+
+
+# --- hashing -----------------------------------------------------------------
+@register("hash_md5")
+def _hash_md5(v: Any) -> str:
+    return _hashlib.md5(_s(v).encode("utf-8")).hexdigest()
+
+
+@register("hash_sha1")
+def _hash_sha1(v: Any) -> str:
+    return _hashlib.sha1(_s(v).encode("utf-8")).hexdigest()
+
+
+# --- math (trig etc.) --------------------------------------------------------
+def _math1(fn: Callable[[float], float]) -> Callable[[Any], Any]:
+    def wrap(v: Any) -> Any:
+        n = _num(v)
+        try:
+            return None if n is None else fn(float(n))
+        except (ValueError, OverflowError):
+            return None
+    return wrap
+
+
+for _name, _fn in {
+    "sin": _math.sin, "cos": _math.cos, "tan": _math.tan,
+    "asin": _math.asin, "acos": _math.acos, "atan": _math.atan,
+    "degrees": _math.degrees, "radians": _math.radians,
+    "gamma": _math.gamma, "log_gamma": _math.lgamma,
+}.items():
+    _REGISTRY[_name] = _math1(_fn)
+
+
+@register("atan2")
+def _atan2(y: Any, x: Any) -> Any:
+    a, b = _num(y), _num(x)
+    return None if a is None or b is None else _math.atan2(float(a), float(b))
+
+
+@register("gcd")
+def _gcd(a: Any, b: Any) -> int | None:
+    x, y = _toint(a), _toint(b)
+    return None if x is None or y is None else _math.gcd(x, y)
+
+
+@register("lcm")
+def _lcm(a: Any, b: Any) -> int | None:
+    x, y = _toint(a), _toint(b)
+    if x is None or y is None:
+        return None
+    return 0 if x == 0 or y == 0 else abs(x * y) // _math.gcd(x, y)
+
+
+# --- string ------------------------------------------------------------------
+@register("strcmp")
+def _strcmp(a: Any, b: Any) -> int:
+    x, y = _s(a), _s(b)
+    return (x > y) - (x < y)
+
+
+@register("translate")
+def _translate(search_list: Any, replace_list: Any, source: Any) -> str | None:
+    if source is None:
+        return None
+    src_chars = _s(search_list)
+    rep_chars = _s(replace_list)
+    mapping: dict[int, str | None] = {}
+    for i, ch in enumerate(src_chars):
+        mapping[ord(ch)] = rep_chars[i] if i < len(rep_chars) else None
+    return _s(source).translate(mapping)
+
+
+@register("indexof_regex")
+def _indexof_regex(source: Any, pattern: Any, start: Any = 0) -> int:
+    if source is None:
+        return -1
+    m = re.search(_s(pattern), _s(source)[int(start or 0):])
+    return -1 if not m else m.start() + int(start or 0)
+
+
+@register("parse_csv")
+def _parse_csv(v: Any) -> list:
+    if v is None:
+        return []
+    line = _s(v).splitlines()[0] if _s(v) else ""
+    return next(_csv.reader([line]), [])
+
+
+# --- URL ---------------------------------------------------------------------
+@register("url_encode_component")
+def _url_encode_component(v: Any) -> str:
+    return _urlparse.quote(_s(v), safe="")
+
+
+@register("url_encode")
+def _url_encode(v: Any) -> str:
+    return _urlparse.quote_plus(_s(v))
+
+
+@register("url_decode")
+def _url_decode(v: Any) -> str:
+    return _urlparse.unquote_plus(_s(v))
+
+
+@register("parse_urlquery")
+def _parse_urlquery(v: Any) -> dict:
+    q = _s(v)
+    if "?" in q:
+        q = q.split("?", 1)[1]
+    params = {k: vals[0] for k, vals in _urlparse.parse_qs(q).items()}
+    return {"Query Parameters": params}
+
+
+@register("parse_url")
+def _parse_url(v: Any) -> dict:
+    u = _urlparse.urlsplit(_s(v))
+    params = {k: vals[0] for k, vals in _urlparse.parse_qs(u.query).items()}
+    return {
+        "Scheme": u.scheme,
+        "Host": u.hostname or "",
+        "Port": str(u.port) if u.port else "",
+        "Path": u.path,
+        "Username": u.username or "",
+        "Password": u.password or "",
+        "Query Parameters": params,
+        "Fragment": u.fragment,
+    }
+
+
+# --- IPv4 --------------------------------------------------------------------
+def _ipv4(v: Any) -> Any:
+    try:
+        s = _s(v).split("/")[0].strip()
+        return _ipaddress.IPv4Address(s)
+    except (ValueError, _ipaddress.AddressValueError):
+        return None
+
+
+@register("parse_ipv4")
+def _parse_ipv4(v: Any) -> int | None:
+    ip = _ipv4(v)
+    return int(ip) if ip is not None else None
+
+
+@register("format_ipv4")
+def _format_ipv4(v: Any, prefix: Any = 32) -> str | None:
+    ip = _ipv4(v)
+    if ip is None:
+        try:
+            ip = _ipaddress.IPv4Address(int(v))
+        except (ValueError, TypeError):
+            return None
+    p = int(prefix) if prefix is not None else 32
+    net = _ipaddress.IPv4Network(f"{ip}/{p}", strict=False)
+    return str(net.network_address)
+
+
+@register("ipv4_is_private")
+def _ipv4_is_private(v: Any) -> bool | None:
+    ip = _ipv4(v)
+    return None if ip is None else ip.is_private
+
+
+@register("ipv4_netmask_suffix")
+def _ipv4_netmask_suffix(v: Any) -> int | None:
+    s = _s(v)
+    if "/" in s:
+        try:
+            return int(s.split("/", 1)[1])
+        except ValueError:
+            return None
+    return 32 if _ipv4(v) is not None else None
+
+
+@register("ipv4_is_in_range")
+def _ipv4_is_in_range(ip: Any, ip_range: Any) -> bool | None:
+    addr = _ipv4(ip)
+    if addr is None:
+        return None
+    try:
+        net = _ipaddress.IPv4Network(_s(ip_range), strict=False)
+    except (ValueError, _ipaddress.AddressValueError):
+        return None
+    return addr in net
+
+
+@register("ipv4_compare")
+def _ipv4_compare(a: Any, b: Any, prefix: Any = 32) -> int | None:
+    x, y = _ipv4(a), _ipv4(b)
+    if x is None or y is None:
+        return None
+    p = int(prefix) if prefix is not None else 32
+    mask = (0xFFFFFFFF << (32 - p)) & 0xFFFFFFFF if 0 <= p <= 32 else 0xFFFFFFFF
+    xi, yi = int(x) & mask, int(y) & mask
+    return (xi > yi) - (xi < yi)
+
+
+# --- datetime (more) ---------------------------------------------------------
+@register("make_datetime")
+def _make_datetime(year: Any, month: Any, day: Any,
+                   hour: Any = 0, minute: Any = 0, second: Any = 0) -> datetime | None:
+    try:
+        return datetime(int(year), int(month), int(day), int(hour or 0),
+                        int(minute or 0), int(second or 0), tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+@register("make_timespan")
+def _make_timespan(hours: Any, minutes: Any, seconds: Any = 0) -> Any:
+    try:
+        return timedelta(hours=int(hours), minutes=int(minutes), seconds=int(seconds or 0))
+    except (ValueError, TypeError):
+        return None
+
+
+@register("weekofyear")
+@register("week_of_year")
+def _weekofyear(v: Any) -> int | None:
+    d = _dt(v)
+    return d.isocalendar()[1] if d else None
+
+
+@register("endofday")
+def _endofday(v: Any) -> datetime | None:
+    d = _dt(v)
+    return d.replace(hour=23, minute=59, second=59, microsecond=999999) if d else None
+
+
+@register("endofmonth")
+def _endofmonth(v: Any) -> datetime | None:
+    d = _dt(v)
+    if not d:
+        return None
+    if d.month == 12:
+        nxt = d.replace(year=d.year + 1, month=1, day=1)
+    else:
+        nxt = d.replace(month=d.month + 1, day=1)
+    return (nxt - timedelta(microseconds=1)).replace(hour=23, minute=59, second=59,
+                                                      microsecond=999999)
+
+
+@register("endofyear")
+def _endofyear(v: Any) -> datetime | None:
+    d = _dt(v)
+    return d.replace(month=12, day=31, hour=23, minute=59, second=59,
+                     microsecond=999999) if d else None
+
+
+@register("datetime_part")
+def _datetime_part(part: Any, v: Any) -> int | None:
+    d = _dt(v)
+    if not d:
+        return None
+    p = _s(part).lower()
+    return {
+        "year": d.year, "month": d.month, "day": d.day, "hour": d.hour,
+        "minute": d.minute, "second": d.second,
+        "dayofyear": d.timetuple().tm_yday, "weekofyear": d.isocalendar()[1],
+    }.get(p)
+
+
+@register("datetime_add")
+def _datetime_add(part: Any, amount: Any, v: Any) -> datetime | None:
+    d = _dt(v)
+    n = _toint(amount)
+    if d is None or n is None:
+        return None
+    p = _s(part).lower()
+    if p == "day":
+        return d + timedelta(days=n)
+    if p == "hour":
+        return d + timedelta(hours=n)
+    if p == "minute":
+        return d + timedelta(minutes=n)
+    if p == "second":
+        return d + timedelta(seconds=n)
+    if p == "week":
+        return d + timedelta(weeks=n)
+    if p == "month":
+        total = d.year * 12 + (d.month - 1) + n
+        year, month = divmod(total, 12)
+        return d.replace(year=year, month=month + 1)
+    if p == "year":
+        return d.replace(year=d.year + n)
+    return None
+
+
+@register("unixtime_seconds_todatetime")
+def _unix_s(v: Any) -> datetime | None:
+    n = _num(v)
+    return datetime.fromtimestamp(float(n), tz=timezone.utc) if n is not None else None
+
+
+@register("unixtime_milliseconds_todatetime")
+def _unix_ms(v: Any) -> datetime | None:
+    n = _num(v)
+    return datetime.fromtimestamp(float(n) / 1e3, tz=timezone.utc) if n is not None else None
+
+
+@register("unixtime_microseconds_todatetime")
+def _unix_us(v: Any) -> datetime | None:
+    n = _num(v)
+    return datetime.fromtimestamp(float(n) / 1e6, tz=timezone.utc) if n is not None else None
+
+
+# --- dynamic / array (more) --------------------------------------------------
+@register("bag_merge")
+def _bag_merge(*bags: Any) -> dict:
+    out: dict[str, Any] = {}
+    for b in bags:
+        if isinstance(b, dict):
+            for k, v in b.items():
+                out.setdefault(k, v)  # first non-null wins
+    return out
+
+
+@register("bag_remove_keys")
+def _bag_remove_keys(bag: Any, keys: Any) -> Any:
+    if not isinstance(bag, dict):
+        return bag
+    drop = set(keys) if isinstance(keys, list) else set()
+    return {k: v for k, v in bag.items() if k not in drop}
+
+
+def _sort_key(x: Any) -> tuple:
+    return (x is None, x if x is not None else "")
+
+
+@register("array_sort_asc")
+def _array_sort_asc(arr: Any) -> Any:
+    if not isinstance(arr, list):
+        return None
+    try:
+        return sorted(arr, key=_sort_key)
+    except TypeError:
+        return sorted(arr, key=lambda x: (x is None, _s(x)))
+
+
+@register("array_sort_desc")
+def _array_sort_desc(arr: Any) -> Any:
+    s = _array_sort_asc(arr)
+    return None if s is None else list(reversed(s))
+
+
+@register("array_reverse")
+def _array_reverse(arr: Any) -> Any:
+    return list(reversed(arr)) if isinstance(arr, list) else None
+
+
+@register("array_sum")
+def _array_sum(arr: Any) -> Any:
+    if not isinstance(arr, list):
+        return None
+    nums = [x for x in arr if isinstance(x, (int, float)) and not isinstance(x, bool)]
+    return sum(nums) if nums else 0
+
+
+@register("array_rotate_left")
+def _array_rotate_left(arr: Any, n: Any) -> Any:
+    if not isinstance(arr, list) or not arr:
+        return arr
+    k = int(n or 0) % len(arr)
+    return arr[k:] + arr[:k]
+
+
+@register("array_rotate_right")
+def _array_rotate_right(arr: Any, n: Any) -> Any:
+    if not isinstance(arr, list) or not arr:
+        return arr
+    k = int(n or 0) % len(arr)
+    return arr[-k:] + arr[:-k] if k else list(arr)
+
+
+@register("array_split")
+def _array_split(arr: Any, index: Any) -> Any:
+    if not isinstance(arr, list):
+        return None
+    idxs = index if isinstance(index, list) else [index]
+    points = [0] + [int(i) for i in idxs] + [len(arr)]
+    return [arr[points[i]:points[i + 1]] for i in range(len(points) - 1)]
+
+
+# --- CEF (transformation-only) ----------------------------------------------
+@register("parse_cef_dictionary")
+def _parse_cef_dictionary(v: Any) -> dict:
+    text = _s(v)
+    if text.startswith("CEF:"):
+        parts = text.split("|")
+        header = {
+            "Version": parts[0][4:] if len(parts) > 0 else "",
+            "DeviceVendor": parts[1] if len(parts) > 1 else "",
+            "DeviceProduct": parts[2] if len(parts) > 2 else "",
+            "DeviceVersion": parts[3] if len(parts) > 3 else "",
+            "SignatureId": parts[4] if len(parts) > 4 else "",
+            "Name": parts[5] if len(parts) > 5 else "",
+            "Severity": parts[6] if len(parts) > 6 else "",
+        }
+        ext = parts[7] if len(parts) > 7 else ""
+    else:
+        header = {}
+        ext = text
+    extension = dict(re.findall(r"(\w+)=((?:[^=]|=(?!\w+=))*?)(?=\s+\w+=|$)", ext))
+    result: dict[str, Any] = dict(header)
+    result["Extension"] = {k: v.strip() for k, v in extension.items()}
+    return result
+
 
 
 

@@ -139,6 +139,12 @@ class ParseKv(Operator):
 
 
 @dataclass(frozen=True)
+class BagUnpack(Operator):
+    column: str
+    prefix: str = ""
+
+
+@dataclass(frozen=True)
 class Query:
     operators: tuple[Operator, ...] = field(default_factory=tuple)
     lets: tuple[tuple[str, Expr], ...] = ()
