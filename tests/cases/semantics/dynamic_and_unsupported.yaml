@@ -7,17 +7,20 @@
   expect:
     - {Level: 2, Device: "apollo13"}
 
-- name: summarize_is_rejected
-  query: "source | summarize count() by Symbol"
+- name: make_series_is_deferred
+  query: "source | make-series Count = count() on T step 1h"
   expect_error: KqlUnsupportedError
 
-- name: sort_is_rejected
-  query: "source | sort by Price"
+- name: scan_is_deferred
+  query: "source | scan with () declare"
   expect_error: KqlUnsupportedError
 
-- name: mv_expand_deferred
+- name: mv_expand_assignment_form
   query: "source | mv-expand Tag = Tags"
-  expect_error: KqlUnsupportedError
+  input:  [{Id: 1, Tags: ["a", "b"]}]
+  expect:
+    - {Id: 1, Tags: ["a", "b"], Tag: "a"}
+    - {Id: 1, Tags: ["a", "b"], Tag: "b"}
 
 - name: unknown_operator
   query: "source | frobnicate X"

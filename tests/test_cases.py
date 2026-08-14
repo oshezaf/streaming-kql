@@ -78,7 +78,8 @@ def test_case(cid: str, case: dict[str, Any]) -> None:
             now = datetime.fromisoformat(str(o["now"]).replace("Z", "+00:00"))
             if now.tzinfo is None:
                 now = now.replace(tzinfo=timezone.utc)
-        opts = Options(now=now, strict_types=bool(o.get("strict_types", False)))
+        opts = Options(now=now, strict_types=bool(o.get("strict_types", False)),
+                       random_seed=o.get("random_seed"))
 
     expect_error = case.get("expect_error")
     if expect_error:

@@ -1,0 +1,101 @@
+# range table source, and the `as`/`fork`/`partition` operators that capture or
+# reshape the per-record row-set. All stateless (within one input record).
+
+# --- range -------------------------------------------------------------------
+- name: range_head_filtered
+  query: "range x from 1 to 5 step 1 | where x > 3"
+  input:  [{}]
+  expect:
+    - {x: 4}
+    - {x: 5}
+
+- name: range_step_two
+  query: "range n from 0 to 10 step 2 | where n > 4"
+  input:  [{}]
+  expect:
+    - {n: 6}
+    - {n: 8}
+    - {n: 10}
+
+- name: range_let_join
+  query: |
+    let R = range n from 1 to 3 step 1;
+    source | mv-expand n = Ns | join kind=inner R on n
+  input:  [{Ns: [2, 3, 9]}]
+  expect:
+    - {Ns: [2, 3, 9], n: 2, n1: 2}
+    - {Ns: [2, 3, 9], n: 3, n1: 3}
+
+- name: range_descending
+  query: "range i from 3 to 1 step -1"
+  input:  [{}]
+  expect:
+    - {i: 3}
+    - {i: 2}
+    - {i: 1}
+
+- name: range_zero_step_errors
+  query: "range i from 1 to 5 step 0"
+  input:  [{}]
+  expect_error: KqlCompileError
+
+# --- as ----------------------------------------------------------------------
+- name: as_capture_then_join
+  query: "source | mv-expand v = V | as Snapshot | where v > 1 | join kind=inner Snapshot on v"
+  input:  [{V: [1, 2, 3]}]
+  expect:
+    - {V: [1, 2, 3], v: 2, V1: [1, 2, 3], v1: 2}
+    - {V: [1, 2, 3], v: 3, V1: [1, 2, 3], v1: 3}
+
+- name: as_capture_then_union
+  query: "source | mv-expand v = V | where v > 2 | as Big | union Big"
+  input:  [{V: [1, 2, 3, 4]}]
+  expect:
+    - {V: [1, 2, 3, 4], v: 3}
+    - {V: [1, 2, 3, 4], v: 4}
+    - {V: [1, 2, 3, 4], v: 3}
+    - {V: [1, 2, 3, 4], v: 4}
+
+- name: as_passthrough_identity
+  query: "source | as X | extend y = 1"
+  input:  [{a: 5}]
+  expect: [{a: 5, y: 1}]
+
+# --- partition ---------------------------------------------------------------
+- name: partition_top_per_group
+  query: "source | mv-expand r = Rows | extend g = r.g, n = r.n | partition by g (top 1 by n)"
+  input:
+    - Rows:
+        - {g: "a", n: 1}
+        - {g: "a", n: 5}
+        - {g: "b", n: 3}
+  expect:
+    - {Rows: [{g: "a", n: 1}, {g: "a", n: 5}, {g: "b", n: 3}], r: {g: "a", n: 5}, g: "a", n: 5}
+    - {Rows: [{g: "a", n: 1}, {g: "a", n: 5}, {g: "b", n: 3}], r: {g: "b", n: 3}, g: "b", n: 3}
+
+- name: partition_summarize_per_group
+  query: "source | mv-expand r = Rows | extend g = r.g, n = r.n | partition by g (summarize s = sum(n))"
+  input:
+    - Rows:
+        - {g: "a", n: 1}
+        - {g: "a", n: 4}
+        - {g: "b", n: 2}
+  expect:
+    - {s: 5}
+    - {s: 2}
+
+# --- fork --------------------------------------------------------------------
+- name: fork_named_branches_then_union
+  query: 'source | fork A=(extend tag = "a") B=(extend tag = "b") | union A, B'
+  input:  [{x: 1}]
+  expect:
+    - {x: 1, tag: null}
+    - {x: 1, tag: "a"}
+    - {x: 1, tag: "b"}
+
+- name: fork_passthrough
+  query: 'source | mv-expand v = V | fork Hi=(where v > 2) | extend seen = true'
+  input:  [{V: [1, 3]}]
+  expect:
+    - {V: [1, 3], v: 1, seen: true}
+    - {V: [1, 3], v: 3, seen: true}

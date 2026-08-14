@@ -40,9 +40,14 @@ ruff check . && mypy && pytest
 
 ## Scope
 
-The engine is **stateless / per-record**. Operators that act across records or
-reorder rows (`summarize`, `join`, `sort`, `top`, …) are out of scope for the
-core and are rejected at compile time. A future stateful extension will live
-behind an explicit opt-in — please open an issue to discuss before adding one.
+The engine is **stateless / per-record**. Aggregating, ordering, and joining
+operators (`summarize`, `join`, `union`, `sort`, `top`, `partition`, …) are
+supported in their **per-record** form — they act on the row-set derived from a
+**single** input record, never across the stream (see
+[docs/testing.md](docs/testing.md) and `docs/SPEC.md` §2.4). Only genuinely
+cross-record behaviour — a *temporal* two-stream `join`, a stream-global
+`summarize`, `make-series` — is out of scope and rejected at compile time. A
+future stateful extension will live behind an explicit opt-in — please open an
+issue to discuss before adding one.
 
 By contributing you agree your contributions are licensed under Apache-2.0.

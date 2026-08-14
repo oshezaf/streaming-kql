@@ -1,0 +1,88 @@
+# Schema-driven type coercion (docs/SPEC.md §3.2).
+# Inputs arrive as strings (as from JSON/log feeds); the declared schema coerces
+# them to the KQL type before the query runs. Cases avoid emitting hard-to-encode
+# types (datetime/timespan/guid/decimal) directly, asserting behavior instead.
+- name: coerce_int
+  query: "source | extend M = N + 1"
+  schema: {N: int}
+  input:  [{N: "42"}]
+  expect: [{N: 42, M: 43}]
+
+- name: coerce_long
+  query: "source | extend M = N * 2"
+  schema: {N: long}
+  input:  [{N: "21"}]
+  expect: [{N: 21, M: 42}]
+
+- name: coerce_real
+  query: "source | extend D = R * 2"
+  schema: {R: real}
+  input:  [{R: "3.5"}]
+  expect: [{R: 3.5, D: 7.0}]
+
+- name: coerce_bool_true
+  query: "source | where B"
+  schema: {B: bool}
+  input:
+    - {B: "true"}
+    - {B: "false"}
+  expect:
+    - {B: true}
+
+- name: coerce_string_from_number
+  query: "source | extend L = strlen(S)"
+  schema: {S: string}
+  input:  [{S: 42}]
+  expect: [{S: "42", L: 2}]
+
+- name: coerce_dynamic_from_json
+  query: "source | extend a = J.a, b = J.b"
+  schema: {J: dynamic}
+  input:  [{J: '{"a": 1, "b": "x"}'}]
+  expect: [{J: {a: 1, b: "x"}, a: 1, b: "x"}]
+
+- name: coerce_datetime_enables_comparison
+  query: "source | where Created > ago(1d) | project Recent = true"
+  options: {now: "2021-01-10T00:00:00Z"}
+  schema: {Created: datetime}
+  input:
+    - {Created: "2021-01-09T12:00:00Z"}
+    - {Created: "2021-01-01T00:00:00Z"}
+  expect:
+    - {Recent: true}
+
+- name: coerce_timespan_arithmetic
+  query: "source | extend Hours = D / 1h | project Hours"
+  schema: {D: timespan}
+  input:  [{D: "1d"}]
+  expect: [{Hours: 24.0}]
+
+- name: coerce_guid_normalizes
+  query: "source | extend Match = G == '12345678-1234-1234-1234-123456789abc' | project Match"
+  schema: {G: guid}
+  input:  [{G: "12345678-1234-1234-1234-123456789ABC"}]
+  expect: [{Match: true}]
+
+- name: coerce_decimal_comparison
+  query: "source | extend Big = P > 10 | project Big"
+  schema: {P: decimal}
+  input:  [{P: "10.5"}]
+  expect: [{Big: true}]
+
+- name: coerce_invalid_becomes_null
+  query: "source | project N"
+  schema: {N: int}
+  input:  [{N: "not-a-number"}]
+  expect: [{N: null}]
+
+- name: coerce_null_stays_null
+  query: "source | project N"
+  schema: {N: int}
+  input:  [{N: null}]
+  expect: [{N: null}]
+
+- name: coerce_undeclared_untouched
+  query: "source | project Kept"
+  schema: {N: int}
+  input:  [{N: "5", Kept: "as-is"}]
+  expect: [{Kept: "as-is"}]

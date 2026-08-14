@@ -1,0 +1,66 @@
+# mv-expand: expand array/bag columns into rows (1 -> N).
+- name: mvexpand_array
+  query: "source | mv-expand Items"
+  input:  [{Id: 1, Items: [10, 20, 30]}]
+  expect:
+    - {Id: 1, Items: 10}
+    - {Id: 1, Items: 20}
+    - {Id: 1, Items: 30}
+
+- name: mvexpand_empty_drops_row
+  query: "source | mv-expand Items"
+  input:  [{Id: 1, Items: []}]
+  expect: []
+
+- name: mvexpand_null_drops_row
+  query: "source | mv-expand Items"
+  input:  [{Id: 1, Items: null}]
+  expect: []
+
+- name: mvexpand_scalar_single_row
+  query: "source | mv-expand Items"
+  input:  [{Id: 1, Items: 42}]
+  expect: [{Id: 1, Items: 42}]
+
+- name: mvexpand_array_of_objects
+  query: "source | mv-expand Ev | extend User = Ev.user"
+  input:
+    - {Host: h1, Ev: [{user: ada}, {user: bob}]}
+  expect:
+    - {Host: h1, Ev: {user: ada}, User: ada}
+    - {Host: h1, Ev: {user: bob}, User: bob}
+
+- name: mvexpand_bag
+  query: "source | mv-expand B"
+  input:  [{B: {a: 1, b: 2}}]
+  expect:
+    - {B: {a: 1}}
+    - {B: {b: 2}}
+
+- name: mvexpand_with_itemindex
+  query: "source | mv-expand with_itemindex=i Items"
+  input:  [{Items: ["x", "y"]}]
+  expect:
+    - {Items: "x", i: 0}
+    - {Items: "y", i: 1}
+
+- name: mvexpand_limit
+  query: "source | mv-expand Items limit 2"
+  input:  [{Items: [1, 2, 3, 4]}]
+  expect:
+    - {Items: 1}
+    - {Items: 2}
+
+- name: mvexpand_multi_lockstep
+  query: "source | mv-expand a, b"
+  input:  [{a: [1, 2, 3], b: [10, 20]}]
+  expect:
+    - {a: 1, b: 10}
+    - {a: 2, b: 20}
+    - {a: 3, b: null}
+
+- name: mvexpand_then_filter
+  query: "source | mv-expand Port | where Port > 80"
+  input:  [{Host: h1, Port: [22, 80, 443]}]
+  expect:
+    - {Host: h1, Port: 443}

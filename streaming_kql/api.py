@@ -31,9 +31,11 @@ __all__ = [
 class Schema:
     """Optional input column typing (``column -> KQL type``).
 
-    In M0 this is stored and exposed but not yet used to coerce values; it is
-    part of the stable API surface so callers can declare types now (e.g. a
-    ``dynamic`` column) and get correct coercion in a later release.
+    When supplied, each declared column of an input record is **coerced** to its
+    KQL type before the query runs (e.g. an ISO-8601 ``string`` becomes a
+    tz-aware ``datetime``, a JSON ``string`` becomes a ``dynamic`` object). A
+    value that cannot be converted becomes null. Undeclared columns are left as
+    supplied. See docs/SPEC.md §3.2 for the type mapping.
     """
 
     def __init__(self, columns: dict[str, str] | None = None):
@@ -47,7 +49,9 @@ class Query:
         self.source = source
         self.schema = schema
         self.options = options or Options()
-        self._compiled = CompiledQuery(parse(source), self.options)
+        self._compiled = CompiledQuery(
+            parse(source), self.options,
+            schema.columns if schema else None)
 
     def transform(self, record: Record) -> list[Record]:
         return self._compiled.transform(record)

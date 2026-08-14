@@ -61,11 +61,24 @@ def domain_of(email: str) -> str:
 kql.compile("source | extend d = domain_of(From)")
 ```
 
+## Documentation
+
+Full developer documentation lives in [`docs/`](docs/index.md):
+
+- [Getting started](docs/getting-started.md) — install, first query, the model.
+- [Usage & API reference](docs/usage.md) — `compile`, `Query`, `Node`, `Options`,
+  `Schema`, custom functions, error handling.
+- [Supported KQL](docs/supported-kql.md) — every operator and function accepted,
+  plus what is rejected.
+- [Examples](docs/examples.md) — DCR and ASIM-style recipes.
+- [Specification](docs/SPEC.md) — formal spec, design rationale, roadmap.
+
 ## Supported KQL
 
 The target is the full **Azure Monitor transformations (DCR) KQL surface**
 (single row in → ≤ one row out) plus all remaining **stateless** operators. See
-[docs/SPEC.md](docs/SPEC.md) §5 and the implementation tracker in Appendix A.
+[docs/supported-kql.md](docs/supported-kql.md) for the authoritative list, and
+[docs/SPEC.md](docs/SPEC.md) §5 with the implementation tracker in Appendix A.
 
 ## Tests
 

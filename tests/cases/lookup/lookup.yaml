@@ -1,0 +1,101 @@
+# datatable / externaldata reference tables + lookup operator.
+# A lookup against a constant reference table is stateless: the table is fixed at
+# compile time and each record is enriched independently (1 -> 0/1 rows).
+
+# --- datatable as a query head -----------------------------------------------
+- name: datatable_head_filtered
+  query: 'datatable(X:long, Y:string)[ 1, "a", 2, "b", 3, "c" ] | where X > 1'
+  input:  [{}]
+  expect:
+    - {X: 2, Y: "b"}
+    - {X: 3, Y: "c"}
+
+- name: datatable_head_coerces_types
+  query: 'datatable(N:long, Ok:bool)[ "5", "true", "6", "false" ] | where Ok'
+  input:  [{}]
+  expect:
+    - {N: 5, Ok: true}
+
+# --- lookup against a datatable let ------------------------------------------
+- name: lookup_leftouter_default
+  query: |
+    let Countries = datatable(Code:string, Name:string) [
+        "US", "United States",
+        "IL", "Israel"
+    ];
+    source | lookup Countries on Code
+  input:
+    - {Code: "US", Val: 1}
+    - {Code: "XX", Val: 2}
+  expect:
+    - {Code: "US", Val: 1, Name: "United States"}
+    - {Code: "XX", Val: 2, Name: null}
+
+- name: lookup_inner_drops_unmatched
+  query: |
+    let Countries = datatable(Code:string, Name:string) [
+        "US", "United States",
+        "IL", "Israel"
+    ];
+    source | lookup kind=inner Countries on Code
+  input:
+    - {Code: "US", Val: 1}
+    - {Code: "XX", Val: 2}
+  expect:
+    - {Code: "US", Val: 1, Name: "United States"}
+
+- name: lookup_mapped_key_names
+  query: |
+    let Dim = datatable(Key:string, Label:string) [ "a", "Alpha", "b", "Beta" ];
+    source | lookup Dim on ProdKey == Key
+  input:
+    - {ProdKey: "a"}
+    - {ProdKey: "b"}
+  expect:
+    - {ProdKey: "a", Label: "Alpha"}
+    - {ProdKey: "b", Label: "Beta"}
+
+- name: lookup_multi_key
+  query: |
+    let Prices = datatable(Sym:string, Ccy:string, Price:long) [
+        "MSFT", "USD", 100,
+        "MSFT", "EUR", 90
+    ];
+    source | lookup Prices on Sym, Ccy
+  input:
+    - {Sym: "MSFT", Ccy: "EUR"}
+  expect:
+    - {Sym: "MSFT", Ccy: "EUR", Price: 90}
+
+- name: lookup_enrich_then_filter
+  query: |
+    let Tier = datatable(Plan:string, Level:long) [ "free", 0, "pro", 2 ];
+    source | lookup Tier on Plan | where Level >= 1
+  input:
+    - {User: "a", Plan: "free"}
+    - {User: "b", Plan: "pro"}
+  expect:
+    - {User: "b", Plan: "pro", Level: 2}
+
+- name: lookup_unknown_table_errors
+  query: "source | lookup Missing on Code"
+  input:  [{Code: "US"}]
+  expect_error: KqlCompileError
+
+# --- externaldata (local file) -----------------------------------------------
+- name: lookup_externaldata_csv
+  query: |
+    let Countries = externaldata(Code:string, Name:string)
+        [ "tests/cases/lookup/countries.csv" ] with (format="csv");
+    source | lookup Countries on Code
+  input:
+    - {Code: "IL"}
+    - {Code: "ZZ"}
+  expect:
+    - {Code: "IL", Name: "Israel"}
+    - {Code: "ZZ", Name: null}
+
+- name: externaldata_remote_rejected
+  query: 'externaldata(A:string)[ "https://example.com/x.csv" ] with (format="csv")'
+  input:  [{}]
+  expect_error: KqlUnsupportedError

@@ -1,0 +1,90 @@
+# sort / order by, top, distinct, take|limit — reorder/reduce the per-record
+# row-set (stateless). Most useful after mv-expand/union.
+- name: sort_by_desc_default
+  query: "source | mv-expand v = V | sort by v"
+  input:  [{V: [3, 1, 2]}]
+  expect:
+    - {V: [3, 1, 2], v: 3}
+    - {V: [3, 1, 2], v: 2}
+    - {V: [3, 1, 2], v: 1}
+
+- name: sort_by_asc
+  query: "source | mv-expand v = V | sort by v asc"
+  input:  [{V: [3, 1, 2]}]
+  expect:
+    - {V: [3, 1, 2], v: 1}
+    - {V: [3, 1, 2], v: 2}
+    - {V: [3, 1, 2], v: 3}
+
+- name: order_by_is_sort_synonym
+  query: "source | mv-expand v = V | order by v asc"
+  input:  [{V: [2, 1]}]
+  expect:
+    - {V: [2, 1], v: 1}
+    - {V: [2, 1], v: 2}
+
+- name: sort_multi_key
+  query: "source | mv-expand r = Rows | sort by r.g asc, r.n desc"
+  input:
+    - Rows:
+        - {g: "a", n: 1}
+        - {g: "b", n: 2}
+        - {g: "a", n: 3}
+  expect:
+    - {Rows: [{g: "a", n: 1}, {g: "b", n: 2}, {g: "a", n: 3}], r: {g: "a", n: 3}}
+    - {Rows: [{g: "a", n: 1}, {g: "b", n: 2}, {g: "a", n: 3}], r: {g: "a", n: 1}}
+    - {Rows: [{g: "a", n: 1}, {g: "b", n: 2}, {g: "a", n: 3}], r: {g: "b", n: 2}}
+
+- name: sort_nulls_first_ascending
+  query: "source | mv-expand v = V | sort by v asc"
+  input:  [{V: [2, null, 1]}]
+  expect:
+    - {V: [2, null, 1], v: null}
+    - {V: [2, null, 1], v: 1}
+    - {V: [2, null, 1], v: 2}
+
+- name: top_n_by
+  query: "source | mv-expand v = V | top 2 by v"
+  input:  [{V: [3, 1, 5, 2, 4]}]
+  expect:
+    - {V: [3, 1, 5, 2, 4], v: 5}
+    - {V: [3, 1, 5, 2, 4], v: 4}
+
+- name: take_first_n
+  query: "source | mv-expand v = V | take 2"
+  input:  [{V: [3, 1, 2]}]
+  expect:
+    - {V: [3, 1, 2], v: 3}
+    - {V: [3, 1, 2], v: 1}
+
+- name: limit_is_take_synonym
+  query: "source | mv-expand v = V | limit 1"
+  input:  [{V: [9, 8]}]
+  expect:
+    - {V: [9, 8], v: 9}
+
+- name: distinct_columns
+  query: "source | mv-expand v = V | distinct v"
+  input:  [{V: [1, 1, 2, 3, 3]}]
+  expect:
+    - {v: 1}
+    - {v: 2}
+    - {v: 3}
+
+- name: distinct_multi_column
+  query: "source | mv-expand r = Rows | extend a = r.a, b = r.b | distinct a, b"
+  input:
+    - Rows:
+        - {a: 1, b: "x"}
+        - {a: 1, b: "x"}
+        - {a: 2, b: "x"}
+  expect:
+    - {a: 1, b: "x"}
+    - {a: 2, b: "x"}
+
+- name: mvexpand_summarize_sort_take_pipeline
+  query: "source | mv-expand v = V | summarize c = count() by v | sort by c desc, v asc | take 2"
+  input:  [{V: [5, 5, 5, 3, 3, 1]}]
+  expect:
+    - {v: 5, c: 3}
+    - {v: 3, c: 2}

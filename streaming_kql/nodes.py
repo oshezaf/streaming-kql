@@ -145,10 +145,212 @@ class BagUnpack(Operator):
 
 
 @dataclass(frozen=True)
+class Lookup(Operator):
+    """Enrich each record from a constant reference table (a ``let`` bound to a
+    ``datatable``/``externaldata``). Stateless: the table is fixed at compile time
+    and does not depend on the stream. At most one matching row is joined."""
+
+    table: str
+    keys: tuple[tuple[str, str], ...]   # (left_column, right_column)
+    kind: str = "leftouter"             # 'leftouter' | 'inner'
+
+
+@dataclass(frozen=True)
+class MvExpand(Operator):
+    """Expand array/bag column(s) into rows (1 → N). Multiple columns expand in
+    lockstep (zipped), padded to the longest with null. Each entry is
+    ``(out_name, source_expr)``; ``source_expr`` is ``None`` to expand the
+    existing column ``out_name`` in place, or an expression for the
+    ``NewCol = <expr>`` form."""
+
+    columns: tuple[tuple[str, Expr | None], ...]
+    item_index: str | None = None       # with_itemindex=Name
+    limit: int | None = None            # cap elements per input row
+
+
+@dataclass(frozen=True)
+class Union(Operator):
+    """Concatenate the incoming stream with additional table expressions,
+    evaluated per record. Operands are constant reference-table names or
+    ``source``-based subqueries (Query nodes) — the stateless slice of union."""
+
+    operands: tuple[object, ...]        # each is a str (table ref) or a Query
+    kind: str = "outer"                 # 'outer' (null-fill) | 'inner' (common cols)
+
+
+# --- batch (per-record row-set) operators ------------------------------------
+# These reduce/reorder the set of rows produced *from a single input record*
+# (e.g. after mv-expand/union). They are stateless because they never cross
+# input records — see docs/SPEC.md §2.4.
+@dataclass(frozen=True)
+class Summarize(Operator):
+    aggregates: tuple[tuple[str, Call], ...]      # (out_name, aggregate call)
+    by_keys: tuple[tuple[str, Expr], ...]          # (out_name, grouping expr)
+
+
+@dataclass(frozen=True)
+class Sort(Operator):
+    keys: tuple[tuple[Expr, bool], ...]            # (key expr, descending?)
+
+
+@dataclass(frozen=True)
+class Top(Operator):
+    count: int
+    keys: tuple[tuple[Expr, bool], ...]            # (key expr, descending?)
+
+
+@dataclass(frozen=True)
+class Distinct(Operator):
+    columns: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Take(Operator):
+    count: int
+
+
+@dataclass(frozen=True)
+class Join(Operator):
+    """Join the per-record row-set (left) with a bounded right table — a
+    ``source`` subquery re-derived from the same input record, or a constant
+    reference table. Stateless: both sides are fully materialised in memory for
+    the one record being processed, so every join *kind* (including right/full
+    outer) is computable without cross-record state. See docs/SPEC.md §2.4."""
+
+    right: object                        # str (table ref) or Query (subquery)
+    keys: tuple[tuple[str, str], ...]    # (left_column, right_column)
+    kind: str = "innerunique"
+
+
+@dataclass(frozen=True)
+class As(Operator):
+    """Name the current per-record row-set so later operators (``join``/``union``)
+    can reference it as a table within the same record's processing."""
+
+    name: str
+
+
+@dataclass(frozen=True)
+class Fork(Operator):
+    """Run several sub-pipelines on the current per-record row-set, capturing
+    each result as a named table (for later ``join``/``union``). The input row-set
+    passes through unchanged."""
+
+    branches: tuple[tuple[str, tuple[Operator, ...]], ...]   # (name, sub-operators)
+
+
+@dataclass(frozen=True)
+class Partition(Operator):
+    """Group the current per-record row-set by a column and run a sub-pipeline on
+    each group, concatenating the results (1 → N, stateless within the record)."""
+
+    key: str
+    operators: tuple[Operator, ...]
+
+
+@dataclass(frozen=True)
+class Count(Operator):
+    """Count the rows of the per-record row-set, emitting a single ``Count`` row."""
+
+
+@dataclass(frozen=True)
+class GetSchema(Operator):
+    """Describe the columns of the per-record row-set as rows
+    (``ColumnName``, ``ColumnOrdinal``, ``ColumnType``)."""
+
+
+@dataclass(frozen=True)
+class Sample(Operator):
+    """Return up to ``count`` randomly-chosen rows of the per-record row-set."""
+
+    count: int
+
+
+@dataclass(frozen=True)
+class SampleDistinct(Operator):
+    """Return up to ``count`` random distinct values of ``column`` (one column)."""
+
+    count: int
+    column: str
+
+
+@dataclass(frozen=True)
+class Serialize(Operator):
+    """Assign columns over the ordered per-record row-set, allowing **window
+    functions** (``row_number``, ``prev``, ``next``, ``row_cumsum``) that depend
+    on a row's position. With no assignments it is the identity (the row-set is
+    already an ordered list)."""
+
+    assignments: tuple[tuple[str, Expr], ...]
+
+
+@dataclass(frozen=True)
+class MvApply(Operator):
+    """For each row, expand array column(s) into a subtable, run a sub-pipeline on
+    it, and combine each result with the row's remaining columns (1 → N)."""
+
+    columns: tuple[tuple[str, Expr | None], ...]   # (subtable_col, source_expr)
+    operators: tuple[Operator, ...]
+
+
+@dataclass(frozen=True)
+class MakeSeries(Operator):
+    """Bin ``axis`` into intervals and produce, per group, one row whose aggregate
+    columns are **arrays** (one value per bin) plus the axis as an array of bin
+    starts. Stateless over the per-record row-set."""
+
+    aggregates: tuple[tuple[str, Call, Expr | None], ...]  # (name, agg call, default)
+    axis: str
+    start: Expr
+    stop: Expr
+    step: Expr
+    by_keys: tuple[tuple[str, Expr], ...]
+
+
+
+
+
+
+# --- tabular producers (constant reference tables) ---------------------------
+@dataclass(frozen=True)
+class Datatable:
+    """An inline constant table: ``datatable(Col:type, ...) [ v, v, ... ]``."""
+
+    columns: tuple[tuple[str, str], ...]   # (name, kql_type)
+    values: tuple[Expr, ...]               # flat, row-major scalar expressions
+
+
+@dataclass(frozen=True)
+class ExternalData:
+    """A constant table read from local file(s):
+    ``externaldata(Col:type, ...) [ "path" ] with (format=...)``."""
+
+    columns: tuple[tuple[str, str], ...]
+    uris: tuple[Expr, ...]
+    options: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class Range:
+    """A generated single-column table:
+    ``range Name from Start to Stop step Step`` (constant, materialised once)."""
+
+    name: str
+    start: Expr
+    stop: Expr
+    step: Expr
+
+
+
+@dataclass(frozen=True)
 class Query:
     operators: tuple[Operator, ...] = field(default_factory=tuple)
     lets: tuple[tuple[str, Expr], ...] = ()
-    source_kind: str = "source"                   # 'source' | 'print'
+    source_kind: str = "source"                   # 'source' | 'print' | 'table'
     print_items: tuple[tuple[str | None, Expr], ...] = ()
+    table_lets: tuple[tuple[str, object], ...] = ()   # (name, Datatable|ExternalData)
+    # Datatable|ExternalData producer when source_kind == 'table'
+    head_table: object | None = None
+
 
 

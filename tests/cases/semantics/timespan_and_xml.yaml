@@ -16,15 +16,14 @@
     - {a: "2021-01-01T12:00:00Z", b: "2021-01-01T10:00:00Z"}
 
 - name: ago_with_timespan_literal
-  query: "source | where Created > ago(1d)"
+  query: "source | where Created > ago(1d) | project Recent = true"
   options: {now: "2021-01-10T00:00:00Z"}
   input:
     - {Created: "2021-01-09T12:00:00Z"}
     - {Created: "2021-01-01T00:00:00Z"}
   schema: {Created: datetime}
   expect:
-    - {Created: "2021-01-09T12:00:00Z"}
-  skip: "Created values are strings; requires schema-driven datetime coercion (later milestone)"
+    - {Recent: true}
 
 - name: timespan_multiply
   query: "source | extend d = format_timespan(2h * 3, '')"

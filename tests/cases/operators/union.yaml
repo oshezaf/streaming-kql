@@ -1,0 +1,67 @@
+# union: concatenate the incoming stream with source-subqueries or constant
+# reference tables (the stateless slice of union). The incoming (left) row passes
+# through; operands are evaluated per record.
+- name: union_source_duplicates
+  query: "source | union source"
+  input:  [{X: 1}]
+  expect:
+    - {X: 1}
+    - {X: 1}
+
+- name: union_subquery_tag
+  query: 'source | union (source | extend Tag = "dup")'
+  input:  [{X: 1}]
+  expect:
+    - {X: 1, Tag: null}
+    - {X: 1, Tag: "dup"}
+
+- name: union_outer_null_fills_columns
+  query: 'source | union (source | project Only = 9)'
+  input:  [{A: 1}]
+  expect:
+    - {A: 1, Only: null}
+    - {A: null, Only: 9}
+
+- name: union_inner_keeps_common_columns
+  query: "source | union kind=inner (source | extend Extra = 1)"
+  input:  [{A: 5}]
+  expect:
+    - {A: 5}
+    - {A: 5}
+
+- name: union_constant_datatable
+  query: |
+    let Extra = datatable(K:string)[ "x", "y" ];
+    source | union Extra
+  input:  [{K: "in"}]
+  expect:
+    - {K: "in"}
+    - {K: "x"}
+    - {K: "y"}
+
+- name: union_multiple_operands
+  query: 'source | union (source | extend b = 1), (source | extend b = 2)'
+  input:  [{a: 0}]
+  expect:
+    - {a: 0, b: null}
+    - {a: 0, b: 1}
+    - {a: 0, b: 2}
+
+- name: union_after_filter_only_survivors_branch
+  query: "source | where sev > 1 | union (source | extend high = true)"
+  input:
+    - {sev: 5}
+    - {sev: 0}
+  expect:
+    - {sev: 5, high: null}
+    - {sev: 5, high: true}
+
+- name: union_unknown_table_errors
+  query: "source | union Missing"
+  input:  [{A: 1}]
+  expect_error: KqlCompileError
+
+- name: union_subquery_stateful_rejected
+  query: "source | union (source | make-series Count = count() on T step 1h)"
+  input:  [{A: 1}]
+  expect_error: KqlUnsupportedError

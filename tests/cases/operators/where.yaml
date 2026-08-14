@@ -33,3 +33,46 @@
     - {Symbol: GOOG}
   expect:
     - {Symbol: MSFT}
+
+- name: where_has_any
+  query: "source | where Message has_any ('error', 'fail')"
+  input:
+    - {Message: "an error occurred"}
+    - {Message: "operation did fail"}
+    - {Message: "all good here"}
+  expect:
+    - {Message: "an error occurred"}
+    - {Message: "operation did fail"}
+
+- name: where_has_any_case_insensitive
+  query: "source | where Message has_any ('ERROR', 'WARN')"
+  input:
+    - {Message: "an Error occurred"}
+    - {Message: "all good"}
+  expect:
+    - {Message: "an Error occurred"}
+
+- name: where_has_all
+  query: "source | where Message has_all ('user', 'login')"
+  input:
+    - {Message: "user ada login ok"}
+    - {Message: "user ada logout"}
+  expect:
+    - {Message: "user ada login ok"}
+
+- name: where_has_any_single_term
+  query: "source | where Message has_any ('error')"
+  input:
+    - {Message: "an error occurred"}
+    - {Message: "fine"}
+  expect:
+    - {Message: "an error occurred"}
+
+- name: extend_has_any_bool
+  query: "source | extend Flagged = Message has_any ('error', 'fail')"
+  input:
+    - {Message: "big error"}
+    - {Message: "ok"}
+  expect:
+    - {Message: "big error", Flagged: true}
+    - {Message: "ok", Flagged: false}

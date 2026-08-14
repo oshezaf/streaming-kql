@@ -1,0 +1,57 @@
+# summarize — aggregate over the row-set produced from a single input record
+# (the stateless per-record model). Typically used after mv-expand/union.
+- name: summarize_count_sum_global
+  query: "source | mv-expand v = V | summarize n = count(), total = sum(v)"
+  input:  [{V: [10, 20, 30]}]
+  expect: [{n: 3, total: 60}]
+
+- name: summarize_group_by
+  query: "source | mv-expand ev = Events | summarize cnt = count() by kind = ev.k"
+  input:  [{Events: [{k: "a"}, {k: "b"}, {k: "a"}]}]
+  expect:
+    - {kind: "a", cnt: 2}
+    - {kind: "b", cnt: 1}
+
+- name: summarize_by_bare_column
+  query: "source | mv-expand t = Tags | summarize c = count() by t"
+  input:  [{Tags: ["x", "y", "x"]}]
+  expect:
+    - {t: "x", c: 2}
+    - {t: "y", c: 1}
+
+- name: summarize_anonymous_names
+  query: "source | mv-expand x = X | summarize count(), sum(x)"
+  input:  [{X: [1, 2, 3]}]
+  expect: [{count_: 3, sum_x: 6}]
+
+- name: summarize_by_only_is_distinct
+  query: "source | mv-expand t = Tags | summarize by t"
+  input:  [{Tags: ["a", "b", "a"]}]
+  expect:
+    - {t: "a"}
+    - {t: "b"}
+
+- name: summarize_min_max_avg_dcount
+  query: "source | mv-expand v = V | summarize mn = min(v), mx = max(v), a = avg(v), d = dcount(v)"
+  input:  [{V: [2, 2, 5, 1]}]
+  expect: [{mn: 1, mx: 5, a: 2.5, d: 3}]
+
+- name: summarize_make_list_set
+  query: "source | mv-expand v = V | summarize lst = make_list(v), st = make_set(v)"
+  input:  [{V: [2, 2, 5, 1]}]
+  expect: [{lst: [2, 2, 5, 1], st: [2, 5, 1]}]
+
+- name: summarize_countif_sumif
+  query: "source | mv-expand v = V | summarize hi = countif(v > 2), his = sumif(v, v > 2)"
+  input:  [{V: [1, 3, 5, 2]}]
+  expect: [{hi: 2, his: 8}]
+
+- name: summarize_ignores_nulls_in_sum
+  query: "source | mv-expand v = V | summarize total = sum(v), a = avg(v)"
+  input:  [{V: [10, null, 30]}]
+  expect: [{total: 40, a: 20.0}]
+
+- name: summarize_not_an_aggregate_errors
+  query: "source | summarize X"
+  input:  [{X: 1}]
+  expect_error: KqlCompileError

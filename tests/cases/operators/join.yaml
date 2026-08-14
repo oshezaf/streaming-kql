@@ -1,0 +1,120 @@
+# join — the per-record row-set (left) joined with a bounded right table:
+# a constant reference table, or a `source` subquery re-derived from the same
+# input record. Stateless; every kind is computable in memory.
+- name: join_inner_constant_table
+  query: |
+    let Names = datatable(Code:string, Name:string) [
+        "US", "United States",
+        "IL", "Israel"
+    ];
+    source | mv-expand Code = Codes | join kind=inner Names on Code
+  input:  [{Codes: ["US", "ZZ", "IL"]}]
+  expect:
+    - {Codes: ["US", "ZZ", "IL"], Code: "US", Code1: "US", Name: "United States"}
+    - {Codes: ["US", "ZZ", "IL"], Code: "IL", Code1: "IL", Name: "Israel"}
+
+- name: join_leftouter_keeps_unmatched_left
+  query: |
+    let Names = datatable(Code:string, Name:string) [ "US", "United States" ];
+    source | mv-expand Code = Codes | join kind=leftouter Names on Code
+  input:  [{Codes: ["US", "ZZ"]}]
+  expect:
+    - {Codes: ["US", "ZZ"], Code: "US", Code1: "US", Name: "United States"}
+    - {Codes: ["US", "ZZ"], Code: "ZZ", Code1: null, Name: null}
+
+- name: join_rightouter_emits_unmatched_right
+  query: |
+    let Names = datatable(Code:string, Name:string) [ "US", "United States", "XX", "Nowhere" ];
+    source | mv-expand Code = Codes | join kind=rightouter Names on Code
+  input:  [{Codes: ["US"]}]
+  expect:
+    - {Codes: ["US"], Code: "US", Code1: "US", Name: "United States"}
+    - {Codes: null, Code: null, Code1: "XX", Name: "Nowhere"}
+
+- name: join_fullouter
+  query: |
+    let Names = datatable(Code:string, Name:string) [ "US", "United States", "XX", "Nowhere" ];
+    source | mv-expand Code = Codes | join kind=fullouter Names on Code
+  input:  [{Codes: ["US", "ZZ"]}]
+  expect:
+    - {Codes: ["US", "ZZ"], Code: "US", Code1: "US", Name: "United States"}
+    - {Codes: ["US", "ZZ"], Code: "ZZ", Code1: null, Name: null}
+    - {Codes: null, Code: null, Code1: "XX", Name: "Nowhere"}
+
+- name: join_leftanti
+  query: |
+    let Names = datatable(Code:string, Name:string) [ "US", "United States" ];
+    source | mv-expand Code = Codes | join kind=leftanti Names on Code
+  input:  [{Codes: ["US", "ZZ"]}]
+  expect:
+    - {Codes: ["US", "ZZ"], Code: "ZZ"}
+
+- name: join_leftsemi
+  query: |
+    let Names = datatable(Code:string, Name:string) [ "US", "United States" ];
+    source | mv-expand Code = Codes | join kind=leftsemi Names on Code
+  input:  [{Codes: ["US", "ZZ"]}]
+  expect:
+    - {Codes: ["US", "ZZ"], Code: "US"}
+
+- name: join_rightsemi
+  query: |
+    let Names = datatable(Code:string, Name:string) [ "US", "United States", "XX", "Nowhere" ];
+    source | mv-expand Code = Codes | join kind=rightsemi Names on Code
+  input:  [{Codes: ["US"]}]
+  expect:
+    - {Code: "US", Name: "United States"}
+
+- name: join_rightanti
+  query: |
+    let Names = datatable(Code:string, Name:string) [ "US", "United States", "XX", "Nowhere" ];
+    source | mv-expand Code = Codes | join kind=rightanti Names on Code
+  input:  [{Codes: ["US"]}]
+  expect:
+    - {Code: "XX", Name: "Nowhere"}
+
+- name: join_inner_keeps_left_duplicates
+  query: |
+    let R = datatable(k:string, v:long) [ "a", 1 ];
+    source | mv-expand k = Ks | join kind=inner R on k
+  input:  [{Ks: ["a", "a"]}]
+  expect:
+    - {Ks: ["a", "a"], k: "a", k1: "a", v: 1}
+    - {Ks: ["a", "a"], k: "a", k1: "a", v: 1}
+
+- name: join_innerunique_dedups_left
+  query: |
+    let R = datatable(k:string, v:long) [ "a", 1 ];
+    source | mv-expand k = Ks | join R on k
+  input:  [{Ks: ["a", "a"]}]
+  expect:
+    - {Ks: ["a", "a"], k: "a", k1: "a", v: 1}
+
+- name: join_mapped_key_names
+  query: |
+    let Dim = datatable(Key:string, Label:string) [ "a", "Alpha", "b", "Beta" ];
+    source | mv-expand ProdKey = Keys | join kind=inner Dim on ProdKey == Key
+  input:  [{Keys: ["a", "b"]}]
+  expect:
+    - {Keys: ["a", "b"], ProdKey: "a", Key: "a", Label: "Alpha"}
+    - {Keys: ["a", "b"], ProdKey: "b", Key: "b", Label: "Beta"}
+
+- name: join_source_subquery_self_join
+  query: "source | mv-expand x = V | join kind=inner (source | mv-expand y = V | project y) on x == y"
+  input:  [{V: [1, 2, 3]}]
+  expect:
+    - {V: [1, 2, 3], x: 1, y: 1}
+    - {V: [1, 2, 3], x: 2, y: 2}
+    - {V: [1, 2, 3], x: 3, y: 3}
+
+- name: join_unknown_table_errors
+  query: "source | join Missing on Id"
+  input:  [{Id: 1}]
+  expect_error: KqlCompileError
+
+- name: join_invalid_kind_errors
+  query: |
+    let R = datatable(k:string)[ "a" ];
+    source | join kind=crossjoin R on k
+  input:  [{k: "a"}]
+  expect_error: KqlCompileError

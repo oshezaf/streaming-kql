@@ -1,0 +1,43 @@
+# count and getschema — per-record batch operators over the row-set.
+- name: count_rows
+  query: "source | mv-expand v = V | count"
+  input:  [{V: [10, 20, 30]}]
+  expect: [{Count: 3}]
+
+- name: count_after_filter
+  query: "source | mv-expand v = V | where v > 1 | count"
+  input:  [{V: [1, 2, 3]}]
+  expect: [{Count: 2}]
+
+- name: count_single_record
+  query: "source | count"
+  input:  [{a: 1}]
+  expect: [{Count: 1}]
+
+- name: count_aggregate_still_works
+  query: "source | mv-expand v = V | summarize c = count()"
+  input:  [{V: [1, 2, 3]}]
+  expect: [{c: 3}]
+
+- name: count_usable_as_column_name
+  query: "source | extend count = n * 2"
+  input:  [{n: 5}]
+  expect: [{n: 5, count: 10}]
+
+- name: getschema_columns
+  query: "source | getschema"
+  input:  [{Name: "ada", Age: 30, Ok: true, Ctx: {a: 1}}]
+  expect:
+    - {ColumnName: "Name", ColumnOrdinal: 0, ColumnType: "string"}
+    - {ColumnName: "Age", ColumnOrdinal: 1, ColumnType: "long"}
+    - {ColumnName: "Ok", ColumnOrdinal: 2, ColumnType: "bool"}
+    - {ColumnName: "Ctx", ColumnOrdinal: 3, ColumnType: "dynamic"}
+
+- name: getschema_type_from_first_nonnull
+  query: "source | mv-expand r = Rows | extend v = r.v | project v | getschema"
+  input:
+    - Rows:
+        - {v: null}
+        - {v: 3.5}
+  expect:
+    - {ColumnName: "v", ColumnOrdinal: 0, ColumnType: "real"}

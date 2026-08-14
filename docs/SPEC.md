@@ -1,10 +1,17 @@
 # streaming-kql — Specification
 
-> **Spec v0.1 (2026-08-10).** A pure-Python library that evaluates the
+> **Spec v0.2 (2026-08-13).** A pure-Python library that evaluates the
 > **stateless subset of the Kusto Query Language (KQL)** against events **one
 > record at a time** (streaming / per-event), with **no storage, no database,
 > and no non-Python runtime**. Distribution name **`streaming-kql`**, import
 > package **`streaming_kql`**. License **Apache-2.0**.
+>
+> This revision aligns the spec with the implementation: under the per-record
+> model every KQL tabular operator has a stateless per-record form, so the
+> original "stateful, permanently rejected" category no longer exists. Aggregating,
+> ordering, and joining operators (`summarize`, `sort`, `top`, `join`, `union`,
+> `partition`, …) are implemented as **per-record batch operators** (§2.4). The
+> only genuine gap is a *temporal* join of two independent streams (§5.6).
 
 ---
 
@@ -36,10 +43,12 @@ per-row logic.
 
 ### 1.2 Non-goals (initially)
 
-- **Stateful / multi-record operators** — `summarize`, `join`, `union`, `sort`/
-  `order`, `top`, `make-series`, `serialize`, `partition`, `scan` (§5.6). These
-  need buffering/ordering and are out of the streaming stateless core. A later
-  **stateful extension** may add windowed variants (§2.3).
+- **Cross-record / stream-global semantics** — a running `summarize` over the
+  whole feed, a global `sort`/`top`, or a *temporal* `join` of two independent
+  streams (§5.6). The **per-record** forms of these operators (aggregate/order/
+  join *within one input record's row-set*) **are implemented** as batch
+  operators (§2.4); only their cross-record forms are out of scope and left to a
+  future stateful extension (§2.3).
 - A full Azure Data Explorer engine, storage, or cluster semantics.
 - `geo_location` (external IP-geolocation service) — **not planned** (out of
   scope; it requires a network service and does not fit an offline library).
@@ -86,9 +95,29 @@ A later opt-in **stateful extension** (separate module/flag) may add windowed
 `summarize`, bounded `sort`/`top`, `join` against a reference set, etc. The core
 architecture (§6) keeps scalar evaluation independent of the operator layer and
 models operators as record→records so a stateful operator layer (operator holds
-state across the stream) can be added **without changing the scalar engine, the
-parser, or the public streaming API**. Until then, stateful operators are
-rejected at compile time with a clear error.
+state across the stream) can be added **without changing the scalar engine, the parser, or the public streaming API**.
+Until then, the handful of operators that have no per-record form yet (`scan`,
+`top-nested`, `make-series`) are rejected at compile time with a clear
+`KqlUnsupportedError`.
+
+### 2.4 Per-record batch operators (aggregation without cross-record state)
+
+`transform(record)` produces an intermediate **row-set** — 0..N rows derived
+from the *one* input record (e.g. `mv-expand` fans one record into many). A
+second operator tier, **batch operators**, reduces or reorders that per-record
+row-set: `summarize`, `sort`/`order by`, `top`, `distinct`, `take`/`limit`.
+
+These are stateless because they operate **only within a single input record's
+row-set** and never accumulate across the stream. Two operator tiers coexist:
+
+- **row operators** — `record → rows`, applied per row (`where`, `extend`, …).
+- **batch operators** — `rows → rows`, applied to the whole per-record row-set.
+
+The distinction from KQL's stream-global semantics is explicit and documented:
+`source | summarize count()` yields `1` for **every** input record, not a running
+total. Genuine cross-record aggregation remains the stateful extension (§2.3).
+This tier reuses the same scalar engine and required no change to the parser AST
+or the public API — only an added compile/run branch.
 
 ---
 
@@ -118,8 +147,9 @@ mutated).
 ### 3.3 Schema (optional)
 
 `Schema({"col": "datetime", "ctx": "dynamic", ...})` supplies true KQL typing/
-coercion; without it, types are inferred from Python values. (In M0 the schema is
-accepted and stored; coercion lands in a later milestone.)
+coercion; without it, types are inferred from Python values. (Schema-driven
+coercion of all KQL types is implemented; a declared column is coerced at
+ingestion, an unconvertible value becomes null.)
 
 ---
 
@@ -178,16 +208,17 @@ plus remaining stateless operators. Tracked in Appendix A.
 **DCR baseline:** `where`/`filter`, `extend`, `project`, `project-away`,
 `project-rename`, `parse`, `print`, `datatable`, `columnifexists`.
 
-**Stateless extensions (post-baseline):** `parse-where`, `project-keep`,
-`project-reorder`.
+**Stateless extensions (post-baseline, implemented):** `parse-where`,
+`project-keep`, `project-reorder`, `parse-kv`, `evaluate bag_unpack`, `mv-expand`
+(arrays/bags, multi-column, `with_itemindex`, `limit`), `lookup`, `externaldata`
+(local files), `range`.
 
-**Deferred — evaluate individually (not committed):** `mv-expand`, `mv-expand`
-with `bag_unpack`/`evaluate bag_unpack`, `take`/`limit`, `sample`. These are 1→N
-or need bounded state; each will be assessed for clean stateless semantics before
-inclusion. Until implemented they raise `KqlUnsupportedError` ("under
-evaluation").
+**Deferred — recognized, raise `KqlUnsupportedError` (no per-record form wired
+yet):** `scan`, `top-nested`, `make-series`.
 
-**Rejected (stateful, §5.6).**
+**Experimental — parse and run but not yet covered by the conformance suite (may
+be incomplete):** `sample`, `sample-distinct`, `serialize` (with window
+functions), `mv-apply`.
 
 ### 5.3 Scalar operators
 Numerical (all); datetime/timespan arithmetic (all); string `==`,`!=`,`=~`,`!~`,
@@ -226,12 +257,38 @@ Full DCR set (Appendix A tracks status):
 - **Case sensitivity** for `_cs` operators and `=~`/`!~`.
 - **datetime/timespan literals**.
 
-### 5.6 Out of scope (stateful) — rejected at compile time
-`summarize`, `make-series`, `join`, `union`, `sort`/`order by`, `top`,
-`top-nested`, `serialize`, `row_number`, `partition`, `scan`, `range` (as source),
-`distinct`, `count`, and aggregation functions. Compiling raises
-`KqlUnsupportedError` naming the operator. A future stateful extension (§2.3) may
-add windowed equivalents.
+### 5.6 Not yet implemented / out of scope
+Under the per-record paradigm (§2.4) a "table" is the current record's row-set,
+so almost every KQL tabular operator has a stateless per-record form. There is
+**no permanently-rejected "stateful" category**. What remains unavailable is:
+
+- **Recognized but not built yet** (raise `KqlUnsupportedError` at compile
+  time): `scan`, `top-nested`, `make-series`.
+- **Experimental** (parse and execute, but not yet in the conformance suite and
+  possibly incomplete): `serialize` (with the `row_number`/`prev`/`next`/
+  `row_cumsum` window functions), `mv-apply`, `sample`, `sample-distinct`. The
+  `sample*` operators are additionally **non-deterministic**.
+- **Genuinely cross-record** — a *temporal* join of two independent streams (a
+  left record matching a right record from a different point in the stream).
+  This needs buffering/windowing across input records (a future stateful
+  extension, §2.3) and is not expressible today (`source` = current record).
+
+> **Per-record batch operators (§2.4) — supported.** `summarize`, `sort`/`order
+> by`, `top`, `distinct`, `take`/`limit`, `join`, `partition`, `as`, `fork`,
+> `count`, and `getschema` operate over the row-set of a single input record
+> (never across records). `range` is a constant table source.
+
+> **`join` (all kinds):** the left side is the per-record row-set; the right side
+> is a **bounded** table — a `source` subquery re-derived from the same record,
+> or a constant reference table. Both are fully materialised in memory for the
+> record, so every kind (inner/innerunique/left·right·full outer/semi/anti) is
+> stateless. Only a *temporal* join of two independent streams is out of scope —
+> and it cannot be expressed, since `source` denotes the current record.
+
+> **`union` (partial):** the stateless slice — unioning `source` subqueries and
+> **constant** reference tables (`datatable`/`externaldata`), evaluated per
+> record — **is supported**. Only `union` operands that themselves use a stateful
+> operator are rejected. Unioning two live streams remains out of scope.
 
 ### 5.7 Further stateless additions to consider (survey)
 
@@ -251,9 +308,15 @@ aggregates, orders, or dedupes across rows is *excluded* — see §5.6.)
 | `search` (per-row) | 1→0/1 | free-text match across a row's columns |
 | `sample` / `sample-distinct` | 1→0/1 | non-deterministic (random) — opt-in only |
 
-**Not addable (stateful):** `summarize`, `join`, `union`, `sort`/`order`, `top`,
-`make-series`, `serialize`, `partition`, `scan`, `range`, `distinct`, `count`,
-`facet`, `render`, `lookup`.
+**Implemented as per-record batch operators (§2.4):** `summarize`, `join`,
+`union`, `sort`/`order`, `top`, `partition`, `distinct`, `count`, `as`, `fork`,
+`getschema`. Constant tabular sources: `datatable`, `externaldata`, `range`;
+stateless enrichment: `lookup`. All operate within the current record's row-set
+(never across records).
+
+**Still out (cross-record or not wired):** a *temporal* `join` of two independent
+streams; `scan`, `top-nested`, `make-series` (recognized, raise
+`KqlUnsupportedError`); `facet`, `render` (no per-record form of interest).
 
 **Scalar functions (stateless) — prioritized for log/ASIM work:**
 
@@ -302,9 +365,10 @@ surface), `errors.py`.
 of the operator layer (`record -> Iterable[record]`). A future stateful operator
 is just an operator object that keeps state across calls and is driven by
 `stream()`; nothing in the scalar engine, parser AST, or public API needs to
-change. Operator dispatch and the stateful/stateless classification live in one
-place (`parser._STATEFUL_OPERATORS` / evaluator dispatch) to make the extension a
-localized change.
+change. Operator dispatch and the deferred/unsupported classification live in one
+place (`parser._DEFERRED_OPERATORS` / evaluator dispatch) to make the extension a
+localized change. (The original `_STATEFUL_OPERATORS` reject-list was removed once
+the per-record model showed every tabular operator has a stateless form.)
 
 ### 6.1 Parser strategy — options & trade-offs
 
@@ -361,10 +425,11 @@ column-order-insensitive).
 (dropped files auto-run), exercising the public API. Rich diff on failure.
 
 ### 7.3 Categories & coverage
-`cases/operators/`, `cases/functions/`, `cases/operators_scalar/`,
-`cases/semantics/`, `cases/dcr/` (verbatim doc examples), `cases/asim/`
-(normalization snippets — robustness benchmark), `cases/regression/`. CI gates
-that every supported item (Appendix A) has ≥1 case.
+`cases/operators/` (tabular operators), `cases/functions/` (scalar functions),
+`cases/lookup/` (constant reference tables + `lookup`), `cases/semantics/`
+(coercion, dynamic access, timespan/XML, unsupported-operator rejection), and
+`cases/dcr/` (verbatim Azure Monitor doc examples). CI gates that every supported
+item (Appendix A) has ≥1 case.
 
 ### 7.4 Conformance oracle (dev-only, optional)
 Generate/verify golden `expect` by running the same `query`+`input` through a
@@ -401,17 +466,20 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
 
 - **M0 — Skeleton** *(done)*: repo, packaging, CI, data-driven runner; **Lark**
   parser; working `where`/`extend`/`project`/`project-away`/`project-rename` +
-  scalar grammar + a growing scalar-function set; stateful operators rejected.
-- **M1 — Core stateless + scalars**: complete scalar/string/numeric operators and
+  scalar grammar + a growing scalar-function set.
+- **M1 — Core stateless + scalars** *(done)*: scalar/string/numeric operators and
   the most-used functions; broad case coverage.
-- **M2 — DCR baseline complete**: `parse`/`parse-where` (regex full-match),
-  `print`, `datatable`, `columnifexists`, `let`, dynamic handling, and the full
-  DCR scalar-function list; `cases/dcr/` green → first PyPI release `0.1`.
-- **M3 — Remaining stateless**: `project-keep`/`-reorder`, evaluate the deferred
-  1→N operators individually (`mv-expand`, …), `cases/asim/` → `0.2`. Consider
-  the Lark migration (§6.1) here.
+- **M2 — DCR baseline complete** *(done)*: `parse`/`parse-where` (regex
+  full-match), `print`, `datatable`, `columnifexists`, `let`, dynamic handling,
+  and the DCR scalar-function list; `cases/dcr/` green.
+- **M3 — Remaining stateless** *(done)*: `project-keep`/`-reorder`, the 1→N
+  operators (`mv-expand`, …), and the **per-record batch tier** (§2.4):
+  `summarize`, `sort`/`order`, `top`, `distinct`, `take`/`limit`, `join` (all
+  kinds), `union`, `partition`, `as`, `fork`, `count`, `getschema`, plus
+  `externaldata`/`range`/`lookup`. Current published version is `0.0.1` (Alpha).
 - **M4 (future) — stateful extension** (opt-in): windowed `summarize`, bounded
-  `sort`/`top`, etc.
+  `sort`/`top`, a *temporal* two-stream `join`, and wiring the remaining deferred
+  operators (`scan`, `top-nested`, `make-series`).
 
 ---
 
@@ -435,18 +503,34 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
 **Statements:** ✅ `source` · ✅ `print` · ✅ `let`
 
 **Tabular (DCR baseline):** ✅ `where` · ✅ `extend` · ✅ `project` · ✅
-`project-away` · ✅ `project-rename` · ✅ `parse` · ✅ `columnifexists` · ☐
+`project-away` · ✅ `project-rename` · ✅ `parse` · ✅ `columnifexists` · ✅
 `datatable`
 
 **Tabular (stateless ext, beyond DCR):** ✅ `parse-where` · ✅ `project-keep` ·
-✅ `project-reorder` · ✅ `parse-kv` · ✅ `evaluate bag_unpack`
+✅ `project-reorder` · ✅ `parse-kv` · ✅ `evaluate bag_unpack` · ✅
+`externaldata` (local files) · ✅ `range` (constant source) · ✅ `lookup`
+(against a constant reference table) · ✅ `mv-expand` (arrays/bags, multi-column,
+`with_itemindex`, `limit`) · ✅ `union` (of `source` subqueries, constant tables,
+and `as`/`fork` named tables)
 
-**Tabular (deferred, per-operator):** ☐ `mv-expand` · ☐ `take`/`limit` · ☐
-`sample`
+**Tabular (per-record batch, §2.4):** ✅ `summarize` (count/sum/avg/min/max/
+dcount/make_list/make_set/countif/sumif/avgif/any + `by`) · ✅ `sort`/`order by` ·
+✅ `top` · ✅ `distinct` · ✅ `take`/`limit` · ✅ `join` (all kinds, vs. a constant
+table or a same-record `source` subquery) · ✅ `as` (name the row-set) · ✅ `fork`
+(named side-tables) · ✅ `partition` (group → sub-pipeline) · ✅ `count` · ✅
+`getschema`
+
+**Tabular (recognized, not yet implemented — raise `KqlUnsupportedError`):** ☐
+`scan` · ☐ `top-nested` · ☐ `make-series`
+
+**Tabular (experimental — run but not yet in the suite):** ◐ `serialize`
+(+`row_number`/`prev`/`next`/`row_cumsum`) · ◐ `mv-apply` · ◐ `sample` · ◐
+`sample-distinct` (non-deterministic)
+
 
 **Scalar operators:** ◐ numerical · ◐ datetime/timespan arithmetic · ◐ string
 (`==`,`!=`,`=~`,`!~`,`contains(_cs)`,`has(_cs)`,`startswith(_cs)`,`endswith(_cs)`,
-`matches regex`,`in`,`!in`) · ☐ `has_any`/`has_all` · ✅ bitwise
+`matches regex`,`in`,`!in`) · ✅ `has_any`/`has_all` · ✅ bitwise
 
 **Conversion:** ◐ `tobool` `todatetime` `todouble`/`toreal` `toint` `tolong`
 `tostring` `toguid` `totimespan` `todecimal` `tohex`

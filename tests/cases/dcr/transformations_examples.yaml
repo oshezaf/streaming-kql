@@ -7,7 +7,7 @@
     | extend Level = toint(parsedAdditionalContext.Level)
     | extend DeviceId = tostring(parsedAdditionalContext.DeviceID)
     | project TimeGenerated, Level, DeviceId
-  schema: {TimeGenerated: datetime, Message: string, AdditionalContext: dynamic}
+  schema: {AdditionalContext: dynamic}
   input:
     - TimeGenerated: "2021-11-07T09:13:06.570354Z"
       Message: "Houston, we have a problem"
