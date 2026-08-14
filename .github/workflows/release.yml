@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -19,6 +20,10 @@ jobs:
         run: |
           python -m pip install --upgrade build
           python -m build
+      - name: Check metadata
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -27,7 +32,12 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    environment: pypi
+    # Publish only on a version tag from the canonical repo. A manual
+    # workflow_dispatch run builds + validates (twine check) but never uploads.
+    if: github.repository == 'oshezaf/streaming-kql' && startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/streaming-kql
     permissions:
       id-token: write   # OIDC for PyPI Trusted Publishing
     steps:

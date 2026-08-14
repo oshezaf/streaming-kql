@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "streaming-kql"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Evaluate the stateless subset of Kusto Query Language (KQL) over a stream of events, one record at a time — pure Python, no external runtime."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,8 +15,11 @@ keywords = ["kql", "kusto", "streaming", "log", "transform", "asim", "sentinel",
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: System :: Logging",
     "Topic :: Text Processing :: Filters",
 ]
@@ -35,7 +38,12 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/oshezaf/streaming-kql"
 Repository = "https://github.com/oshezaf/streaming-kql"
+Documentation = "https://github.com/oshezaf/streaming-kql/tree/main/docs"
+Changelog = "https://github.com/oshezaf/streaming-kql/blob/main/CHANGELOG.md"
 Issues = "https://github.com/oshezaf/streaming-kql/issues"
+
+[tool.hatch.version]
+path = "streaming_kql/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["streaming_kql"]
