@@ -96,9 +96,8 @@ A later opt-in **stateful extension** (separate module/flag) may add windowed
 architecture (§6) keeps scalar evaluation independent of the operator layer and
 models operators as record→records so a stateful operator layer (operator holds
 state across the stream) can be added **without changing the scalar engine, the parser, or the public streaming API**.
-Until then, the handful of operators that have no per-record form yet (`scan`,
-`top-nested`, `make-series`) are rejected at compile time with a clear
-`KqlUnsupportedError`.
+Until then, the operators not yet built (`scan`, `top-nested`) are rejected at
+compile time with a clear `KqlUnsupportedError`.
 
 ### 2.4 Per-record batch operators (aggregation without cross-record state)
 
@@ -213,12 +212,14 @@ plus remaining stateless operators. Tracked in Appendix A.
 (arrays/bags, multi-column, `with_itemindex`, `limit`), `lookup`, `externaldata`
 (local files), `range`.
 
-**Deferred — recognized, raise `KqlUnsupportedError` (no per-record form wired
-yet):** `scan`, `top-nested`, `make-series`.
+**Per-record batch operators (implemented):** `summarize`, `sort`/`order by`,
+`top`, `distinct`, `take`/`limit`, `count`, `getschema`, `union`, `join`,
+`partition`, `as`, `fork`, `serialize` (with `row_number`/`prev`/`next`/
+`row_cumsum` window functions), `mv-apply`, `make-series`, `sample`,
+`sample-distinct`. See §2.4.
 
-**Experimental — parse and run but not yet covered by the conformance suite (may
-be incomplete):** `sample`, `sample-distinct`, `serialize` (with window
-functions), `mv-apply`.
+**Deferred — recognized, raise `KqlUnsupportedError` (not yet built):** `scan`,
+`top-nested`.
 
 ### 5.3 Scalar operators
 Numerical (all); datetime/timespan arithmetic (all); string `==`,`!=`,`=~`,`!~`,
@@ -263,11 +264,7 @@ so almost every KQL tabular operator has a stateless per-record form. There is
 **no permanently-rejected "stateful" category**. What remains unavailable is:
 
 - **Recognized but not built yet** (raise `KqlUnsupportedError` at compile
-  time): `scan`, `top-nested`, `make-series`.
-- **Experimental** (parse and execute, but not yet in the conformance suite and
-  possibly incomplete): `serialize` (with the `row_number`/`prev`/`next`/
-  `row_cumsum` window functions), `mv-apply`, `sample`, `sample-distinct`. The
-  `sample*` operators are additionally **non-deterministic**.
+  time): `scan`, `top-nested`.
 - **Genuinely cross-record** — a *temporal* join of two independent streams (a
   left record matching a right record from a different point in the stream).
   This needs buffering/windowing across input records (a future stateful
@@ -275,8 +272,9 @@ so almost every KQL tabular operator has a stateless per-record form. There is
 
 > **Per-record batch operators (§2.4) — supported.** `summarize`, `sort`/`order
 > by`, `top`, `distinct`, `take`/`limit`, `join`, `partition`, `as`, `fork`,
-> `count`, and `getschema` operate over the row-set of a single input record
-> (never across records). `range` is a constant table source.
+> `count`, `getschema`, `serialize` (window functions), `mv-apply`, `make-series`,
+> `sample`, and `sample-distinct` operate over the row-set of a single input
+> record (never across records). `range` is a constant table source.
 
 > **`join` (all kinds):** the left side is the per-record row-set; the right side
 > is a **bounded** table — a `source` subquery re-derived from the same record,
@@ -315,8 +313,8 @@ stateless enrichment: `lookup`. All operate within the current record's row-set
 (never across records).
 
 **Still out (cross-record or not wired):** a *temporal* `join` of two independent
-streams; `scan`, `top-nested`, `make-series` (recognized, raise
-`KqlUnsupportedError`); `facet`, `render` (no per-record form of interest).
+streams; `scan`, `top-nested` (recognized, raise `KqlUnsupportedError`); `facet`,
+`render` (no per-record form of interest).
 
 **Scalar functions (stateless) — prioritized for log/ASIM work:**
 
@@ -479,7 +477,7 @@ pyproject.toml README.md LICENSE NOTICE CHANGELOG.md CONTRIBUTING.md
   `externaldata`/`range`/`lookup`. Current published version is `0.0.1` (Alpha).
 - **M4 (future) — stateful extension** (opt-in): windowed `summarize`, bounded
   `sort`/`top`, a *temporal* two-stream `join`, and wiring the remaining deferred
-  operators (`scan`, `top-nested`, `make-series`).
+  operators (`scan`, `top-nested`).
 
 ---
 
@@ -518,14 +516,13 @@ dcount/make_list/make_set/countif/sumif/avgif/any + `by`) · ✅ `sort`/`order b
 ✅ `top` · ✅ `distinct` · ✅ `take`/`limit` · ✅ `join` (all kinds, vs. a constant
 table or a same-record `source` subquery) · ✅ `as` (name the row-set) · ✅ `fork`
 (named side-tables) · ✅ `partition` (group → sub-pipeline) · ✅ `count` · ✅
-`getschema`
+`getschema` · ✅ `serialize` (+`row_number`/`prev`/`next`/`row_cumsum`) · ✅
+`mv-apply` · ✅ `make-series` (bin → per-bin arrays; `from`/`to` optional,
+inferred from axis min/max) · ✅ `sample` · ✅
+`sample-distinct` (seed via `Options(random_seed=…)`)
 
 **Tabular (recognized, not yet implemented — raise `KqlUnsupportedError`):** ☐
-`scan` · ☐ `top-nested` · ☐ `make-series`
-
-**Tabular (experimental — run but not yet in the suite):** ◐ `serialize`
-(+`row_number`/`prev`/`next`/`row_cumsum`) · ◐ `mv-apply` · ◐ `sample` · ◐
-`sample-distinct` (non-deterministic)
+`scan` · ☐ `top-nested`
 
 
 **Scalar operators:** ◐ numerical · ◐ datetime/timespan arithmetic · ◐ string

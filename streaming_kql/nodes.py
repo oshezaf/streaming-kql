@@ -297,12 +297,14 @@ class MvApply(Operator):
 class MakeSeries(Operator):
     """Bin ``axis`` into intervals and produce, per group, one row whose aggregate
     columns are **arrays** (one value per bin) plus the axis as an array of bin
-    starts. Stateless over the per-record row-set."""
+    starts. ``start``/``stop`` are optional — when omitted they are inferred from
+    the row-set's axis min/max (aligned to ``step``). Stateless over the
+    per-record row-set."""
 
     aggregates: tuple[tuple[str, Call, Expr | None], ...]  # (name, agg call, default)
     axis: str
-    start: Expr
-    stop: Expr
+    start: Expr | None
+    stop: Expr | None
     step: Expr
     by_keys: tuple[tuple[str, Expr], ...]
 

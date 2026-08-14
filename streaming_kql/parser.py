@@ -73,7 +73,7 @@ from .nodes import (
 # implementable — just not built yet. ``sample``/``sample-distinct`` are also
 # non-deterministic (random) and would be opt-in. See docs/SPEC.md §5.6.
 _DEFERRED_OPERATORS = {
-    "scan", "top-nested", "make-series",
+    "scan", "top-nested",
 }
 _SUPPORTED_OPERATORS = {
     "where", "filter", "extend", "project", "project-away", "project-rename",
@@ -81,7 +81,7 @@ _SUPPORTED_OPERATORS = {
     "evaluate", "lookup", "mv-expand", "mvexpand", "union",
     "summarize", "sort", "order", "top", "distinct", "take", "limit", "join",
     "as", "fork", "partition", "count", "getschema", "sample", "sample-distinct",
-    "serialize", "mv-apply",
+    "serialize", "mv-apply", "make-series",
 }
 _SOURCE_HEADS = {"source", "print", "let", "datatable", "externaldata", "range"}
 
@@ -169,7 +169,10 @@ serialize_op: "serialize" (assignment ("," assignment)*)?
 mvapply_op: MVAPPLY mvapply_col ("," mvapply_col)* "on" "(" operator ("|" operator)* ")"
 mvapply_col: NAME ("=" expr)?
 makeseries_op: MAKESERIES (ms_agg ("," ms_agg)*)? "on" NAME _ms_range _ms_by?
-_ms_range: "from" expr "to" expr "step" expr
+_ms_range: ms_from? ms_to? ms_step
+ms_from: "from" expr
+ms_to: "to" expr
+ms_step: "step" expr
 _ms_by: "by" ms_key ("," ms_key)*
 ms_agg: NAME "=" expr ("default" "=" expr)?
 ms_key: NAME "=" expr    -> ms_key_named
@@ -608,6 +611,15 @@ class _ToAst(Transformer):
         expr = ch[0]
         return ("mskey", expr.name if isinstance(expr, Column) else None, expr)
 
+    def ms_from(self, ch: list) -> tuple:
+        return ("from", ch[0])
+
+    def ms_to(self, ch: list) -> tuple:
+        return ("to", ch[0])
+
+    def ms_step(self, ch: list) -> tuple:
+        return ("step", ch[0])
+
     def makeseries_op(self, ch: list) -> MakeSeries:
         aggs = tuple((c[1], c[2], c[3]) for c in ch
                      if isinstance(c, tuple) and c and c[0] == "agg")
@@ -617,8 +629,13 @@ class _ToAst(Transformer):
                 keys.append((c[1] or f"Col{len(keys) + 1}", c[2]))
         axis = next(str(t) for t in ch
                     if isinstance(t, Token) and t.type == "NAME")
-        exprs = [c for c in ch if isinstance(c, Expr)]
-        return MakeSeries(aggs, axis, exprs[0], exprs[1], exprs[2], tuple(keys))
+        start = next((c[1] for c in ch
+                      if isinstance(c, tuple) and c and c[0] == "from"), None)
+        stop = next((c[1] for c in ch
+                     if isinstance(c, tuple) and c and c[0] == "to"), None)
+        step = next(c[1] for c in ch
+                    if isinstance(c, tuple) and c and c[0] == "step")
+        return MakeSeries(aggs, axis, start, stop, step, tuple(keys))
 
     # range table producer
     def range_expr(self, ch: list) -> Range:

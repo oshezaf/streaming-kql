@@ -70,6 +70,7 @@ from .nodes import (
 
 Record = dict[str, Any]
 _MISSING = object()
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 class Options:
@@ -1543,23 +1544,45 @@ def _bin_index(av: Any, start: Any, step: Any, n: int) -> int | None:
     return bi if 0 <= bi < n else None
 
 
-def _compile_makeseries(op: MakeSeries, opts: Options) -> BatchFn:
-    start = compile_expr(op.start, opts)({})
-    stop = compile_expr(op.stop, opts)({})
-    step = compile_expr(op.step, opts)({})
-    if start is None or stop is None or step is None:
-        raise KqlCompileError("make-series 'from'/'to'/'step' must be constants")
-    zero = start - start
-    if step == zero:
-        raise KqlCompileError("make-series 'step' must be non-zero")
+def _bin_floor(v: Any, step: Any) -> Any:
+    """Round *v* down to a multiple of *step* from a natural origin (0 for
+    numbers, the Unix epoch for datetimes), matching KQL ``bin()``."""
+    if isinstance(v, datetime):
+        vv = v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+        ratio = (vv - _EPOCH) / step
+        k = int(ratio)
+        if k > ratio:
+            k -= 1
+        return _EPOCH + k * step
+    ratio = v / step
+    k = int(ratio)
+    if k > ratio:
+        k -= 1
+    return k * step
+
+
+def _build_edges(start: Any, step: Any, stop: Any) -> list[Any]:
     edges: list[Any] = []
     v = start
     while v < stop:
         edges.append(v)
         v = v + step
         if len(edges) > _RANGE_ROW_CAP:
-            raise KqlCompileError("make-series produced too many bins")
-    n_bins = len(edges)
+            raise KqlEvalError("make-series produced too many bins")
+    return edges
+
+
+def _compile_makeseries(op: MakeSeries, opts: Options) -> BatchFn:
+    step = compile_expr(op.step, opts)({})
+    if step is None:
+        raise KqlCompileError("make-series 'step' must be a non-null constant")
+    if step == step - step:
+        raise KqlCompileError("make-series 'step' must be non-zero")
+    start_const = compile_expr(op.start, opts)({}) if op.start is not None else None
+    stop_const = compile_expr(op.stop, opts)({}) if op.stop is not None else None
+    # Precompute the axis when both bounds are given; otherwise infer per record.
+    const_edges = (_build_edges(start_const, step, stop_const)
+                   if start_const is not None and stop_const is not None else None)
     axis = op.axis
     agg_specs = [
         (name, _compile_aggregate(call, opts),
@@ -1569,6 +1592,21 @@ def _compile_makeseries(op: MakeSeries, opts: Options) -> BatchFn:
     key_specs = [(name, compile_expr(expr, opts)) for name, expr in op.by_keys]
 
     def _makeseries(rows: list[Record], ctx: _Ctx) -> list[Record]:
+        if const_edges is not None:
+            start, edges = start_const, const_edges
+        else:
+            axis_vals = [r.get(axis) for r in rows if r.get(axis) is not None]
+            if not axis_vals:
+                return []
+            try:
+                start = start_const if start_const is not None \
+                    else _bin_floor(min(axis_vals, key=_sortkey), step)
+                stop = stop_const if stop_const is not None \
+                    else _bin_floor(max(axis_vals, key=_sortkey), step) + step
+                edges = _build_edges(start, step, stop)
+            except (TypeError, ZeroDivisionError):
+                return []
+        n_bins = len(edges)
         groups: dict[tuple, tuple[list[Any], list[list[Record]]]] = {}
         order: list[tuple] = []
         for r in rows:
@@ -1644,12 +1682,14 @@ def _compile_batch(op: Operator, opts: Options, declared: set[str]) -> BatchFn:
         return _compile_serialize(op, opts)
     if isinstance(op, MvApply):
         return _compile_mvapply(op, opts)
+    if isinstance(op, MakeSeries):
+        return _compile_makeseries(op, opts)
     raise KqlCompileError(f"cannot compile batch operator {type(op).__name__}")
 
 
 _BATCH_OP_TYPES = (Summarize, Sort, Top, Distinct, Take, Join, Union, As, Fork,
                    Partition, GetSchema, Count, Sample, SampleDistinct, Serialize,
-                   MvApply)
+                   MvApply, MakeSeries)
 
 
 def _compile_step(op: Operator, opts: Options,

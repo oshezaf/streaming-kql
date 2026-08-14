@@ -61,7 +61,7 @@
   input:  [{A: 1}]
   expect_error: KqlCompileError
 
-- name: union_subquery_stateful_rejected
-  query: "source | union (source | make-series Count = count() on T step 1h)"
+- name: union_subquery_deferred_op_rejected
+  query: "source | union (source | scan with () declare)"
   input:  [{A: 1}]
   expect_error: KqlUnsupportedError

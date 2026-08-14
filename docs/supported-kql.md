@@ -66,6 +66,11 @@ print x = 2 + 3, y = 'hi'
 | [`fork`](https://learn.microsoft.com/en-us/kusto/query/fork-operator) | N → N | Run sub-pipelines that capture named side-tables; input passes through. |
 | [`count`](https://learn.microsoft.com/en-us/kusto/query/count-operator) | N → 1 | Count the rows of the per-record row-set (`{Count: n}`). |
 | [`getschema`](https://learn.microsoft.com/en-us/kusto/query/getschema-operator) | N → M | Describe the row-set's columns as rows. |
+| [`serialize`](https://learn.microsoft.com/en-us/kusto/query/serialize-operator) | N → N | Assign columns using **window functions** (`row_number`/`prev`/`next`/`row_cumsum`). |
+| [`mv-apply`](https://learn.microsoft.com/en-us/kusto/query/mv-apply-operator) | N → M | Expand array column(s) per row and run a sub-pipeline on each. |
+| [`make-series`](https://learn.microsoft.com/en-us/kusto/query/make-series-operator) | N → M | Bin an axis and aggregate into per-bin **arrays**, per group. |
+| [`sample`](https://learn.microsoft.com/en-us/kusto/query/sample-operator) | N → ≤N | `N` random rows of the per-record row-set. |
+| [`sample-distinct`](https://learn.microsoft.com/en-us/kusto/query/sample-distinctoperator) | N → ≤N | `N` random distinct values of a column. |
 
 #### `parse` details
 
@@ -341,14 +346,12 @@ source | lookup Geo on Ip
 
 ### Planned (recognized but not yet implemented)
 
-Every remaining KQL tabular operator has a well-defined **stateless per-record
-form** (it operates on the current record's row-set, not across records), so all
-of these are implementable — they're just not built yet. Compiling one raises
+The remaining KQL tabular operators have a well-defined **stateless per-record
+form** (they operate on the current record's row-set, not across records), so
+they are implementable — just not built yet. Compiling one raises
 `KqlUnsupportedError`:
 
-☐ `serialize` · ☐ `row_number` · ☐ `scan` · ☐ `make-series` · ☐ `top-nested` ·
-☐ `mv-apply` · ☐ `sample` / `sample-distinct` (also **non-deterministic** — would
-be opt-in)
+☐ `scan` (row-by-row state machine) · ☐ `top-nested` (hierarchical top)
 
 ---
 
@@ -543,23 +546,23 @@ including ones KQL treats as inherently "stateful." As a result there is **no
 permanently-rejected operator category**; what's unavailable is either:
 
 - **[Not yet implemented](#planned-recognized-but-not-yet-implemented)** —
-  `serialize`, `row_number`, `scan`, `make-series`, `top-nested`, `mv-apply`
-  (all have a per-record form; planned), and `sample`/`sample-distinct` (also
-  non-deterministic, so opt-in). Compiling raises `KqlUnsupportedError`.
+  `scan` (row-by-row state machine) and `top-nested` (hierarchical top). Both
+  have a per-record form and are planned; compiling raises `KqlUnsupportedError`.
 - **Genuinely cross-record** — a *temporal* join of two independent streams (a
   left record matching a right record from a **different** point in the stream).
   This needs buffering/windowing across input records and belongs to a future
   stateful extension. It isn't even expressible here: `source` always denotes the
   current record.
 
-Everything else — `summarize`, `sort`/`order by`, `top`, `distinct`,
-`take`/`limit`, `partition`, `as`, `fork`, `count`, `getschema`, and `join`/
-`union` against a bounded right side — runs **per input record**, never across
+Everything else — including `summarize`, `sort`/`order by`, `top`, `distinct`,
+`take`/`limit`, `partition`, `as`, `fork`, `count`, `getschema`, `serialize`,
+`mv-apply`, `make-series`, `sample`/`sample-distinct`, and `join`/`union` against
+a bounded right side — runs **per input record**, never across
 the stream. See [SPEC.md](SPEC.md) §2.4 and §5.6.
 
 ```python
-kql.compile("source | make-series Count = count() on T step 1h")
-# raises KqlUnsupportedError: operator 'make-series' is recognized but not yet
+kql.compile("source | scan declare (n:long) with (step s: true => n = 1;)")
+# raises KqlUnsupportedError: operator 'scan' is recognized but not yet
 # implemented; it has a stateless per-record form and is planned
 ```
 

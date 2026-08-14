@@ -4,7 +4,7 @@ All notable changes to **streaming-kql** are documented here. The format is base
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.0.1] - 2026-08-14
 
 Initial release: a pure-Python engine that evaluates the **stateless, per-record
 subset of KQL** over a stream of events — one record at a time, with no external
@@ -23,7 +23,9 @@ runtime. See [docs/](docs/index.md) for the guide and
   max/dcount/make_list/make_set/countif/… with `by`), `sort`/`order by`, `top`,
   `distinct`, `take`/`limit`, `count`, `getschema`, `union`, and `join` (all kinds
   against a bounded right side), plus `partition`, `as`, and `fork` for splitting
-  and naming stream slices.
+  and naming stream slices. Also `serialize` with window functions
+  (`row_number`/`prev`/`next`/`row_cumsum`), `mv-apply`, `make-series`, and
+  `sample`/`sample-distinct` (seedable via `Options(random_seed=…)`).
 - **Sources & reference tables:** `source`, `print`, `datatable`, `range`, and
   `externaldata` (local files only — the library stays offline).
 - **Scalars:** a full expression grammar (arithmetic, comparisons, string
@@ -41,9 +43,8 @@ runtime. See [docs/](docs/index.md) for the guide and
 
 ### Not yet implemented
 
-Recognized operators with a per-record form that are planned but not built:
-`serialize`, `row_number`, `scan`, `make-series`, `top-nested`, `mv-apply`, and
-`sample`/`sample-distinct` (also non-deterministic). A *temporal* join of two
-independent streams is out of scope (a future stateful extension). Compiling any
-of these raises `KqlUnsupportedError`.
+Two operators with a per-record form are recognized but not built yet: `scan`
+(row-by-row state machine) and `top-nested` (hierarchical top). A *temporal* join
+of two independent streams is out of scope (a future stateful extension).
+Compiling any of these raises `KqlUnsupportedError`.
 

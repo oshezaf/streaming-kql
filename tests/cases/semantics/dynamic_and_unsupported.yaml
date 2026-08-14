@@ -7,8 +7,8 @@
   expect:
     - {Level: 2, Device: "apollo13"}
 
-- name: make_series_is_deferred
-  query: "source | make-series Count = count() on T step 1h"
+- name: top_nested_is_deferred
+  query: "source | top-nested 3 of X by count()"
   expect_error: KqlUnsupportedError
 
 - name: scan_is_deferred

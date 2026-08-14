@@ -88,6 +88,7 @@ Cases live under `tests/cases/<category>/`. Current inventory:
 | | `union.yaml` | 9 | `union` of `source` subqueries and constant tables; `kind=inner/outer` |
 | | `stream_tables.yaml` | 12 | `datatable`/`externaldata`/`range`, `as`/`fork`/`partition` |
 | | `count_getschema.yaml` | 7 | `count`, `getschema` |
+| | `deferred_ops.yaml` | 20 | `sample`, `sample-distinct`, `serialize` (window fns), `mv-apply`, `make-series` (incl. inferred bounds) |
 | `functions/` | `scalars.yaml` | 7 | core math scalar functions |
 | | `more_scalars.yaml` | 6 | `trim*`, string/array helpers, hashing |
 | | `ip_url_more.yaml` | 14 | IP (`parse_ipv4`, `ipv4_*`) and URL (`parse_url`, `url_*`) functions |
@@ -96,13 +97,14 @@ Cases live under `tests/cases/<category>/`. Current inventory:
 | | `timespan_and_xml.yaml` | 6 | timespan literals/arithmetic, `parse_xml` |
 | | `dynamic_and_unsupported.yaml` | 5 | `parse_json` + dynamic access; rejection of deferred operators |
 | `dcr/` | `transformations_examples.yaml` | 2 | verbatim Azure Monitor transformation doc examples |
-| **Total** | | **166** | |
+| **Total** | | **186** | |
 
 > The CI gate asserts that every operator/function marked ✅ in
-> [SPEC.md](SPEC.md) Appendix A has at least one case. Experimental operators
-> (`serialize`, `mv-apply`, `sample`, `sample-distinct`) run but are **not yet**
-> in the suite; deferred operators (`scan`, `top-nested`, `make-series`) are
-> covered by rejection cases in `semantics/dynamic_and_unsupported.yaml`.
+> [SPEC.md](SPEC.md) Appendix A has at least one case. `serialize`, `mv-apply`,
+> `make-series`, `sample`, and `sample-distinct` are covered in
+> `operators/deferred_ops.yaml`; the only still-deferred operators (`scan`,
+> `top-nested`) are covered by rejection cases in
+> `semantics/dynamic_and_unsupported.yaml`.
 
 ## Adding a case
 

@@ -135,13 +135,15 @@ Options passed to the `Node` constructor apply to every query it hosts.
 Evaluation options, passed to `kql.compile` (or a `Node`).
 
 ```python
-Options(now: datetime | None = None, strict_types: bool = False)
+Options(now: datetime | None = None, strict_types: bool = False,
+        random_seed: int | None = None)
 ```
 
 | Option | Default | Effect |
 |---|---|---|
 | `now` | `None` | Fixes the clock used by `now()` and `ago()`. When `None`, the current UTC time is used at evaluation. Set it for deterministic, testable output. |
 | `strict_types` | `False` | When `True`, type/value errors raise [`KqlEvalError`](#errors). When `False` (default), such situations yield `null` — KQL's null-tolerant behavior. |
+| `random_seed` | `None` | Seeds the RNG used by `sample`/`sample-distinct`. Set it for deterministic, reproducible sampling. |
 
 ```python
 from datetime import datetime, timezone

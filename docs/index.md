@@ -34,9 +34,9 @@ container, no .NET engine, and no JVM.
 
 Aggregation, ordering, and dedup work **per input record** (never across the
 stream), and `join`/`union` work against a **bounded** right side (a constant
-table or a same-record `source` subquery). Anything that requires *cross-record*
-state — a temporal two-stream `join`, stream-global `summarize`, `make-series`,
-… — is **rejected at compile time** with a clear error. See
+table or a same-record `source` subquery). Only a genuinely *cross-record*
+operation — a temporal two-stream `join` — is out of scope (and isn't even
+expressible, since `source` denotes the current record). See
 [Supported KQL](supported-kql.md).
 
 ## 30-second example
