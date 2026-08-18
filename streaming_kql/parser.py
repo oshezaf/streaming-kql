@@ -24,6 +24,7 @@ from .nodes import (
     BagUnpack,
     Binary,
     Call,
+    Case,
     Column,
     Count,
     Datatable,
@@ -80,7 +81,7 @@ _SUPPORTED_OPERATORS = {
     "project-keep", "project-reorder", "parse", "parse-where", "parse-kv",
     "evaluate", "lookup", "mv-expand", "mvexpand", "union",
     "summarize", "sort", "order", "top", "distinct", "take", "limit", "join",
-    "as", "fork", "partition", "count", "getschema", "sample", "sample-distinct",
+    "as", "fork", "case", "partition", "count", "getschema", "sample", "sample-distinct",
     "serialize", "mv-apply", "make-series",
 }
 _SOURCE_HEADS = {"source", "print", "let", "datatable", "externaldata", "range"}
@@ -129,6 +130,7 @@ ed_opt: NAME "=" (SQSTRING|DQSTRING|NAME)
          | join_op
          | as_op
          | fork_op
+         | case_op
          | partition_op
          | getschema_op
          | count_op
@@ -160,6 +162,10 @@ join_src: "(" query_body ")"   -> join_sub
 as_op: "as" NAME
 fork_op: "fork" fork_branch+
 fork_branch: (NAME "=")? "(" operator ("|" operator)* ")"
+case_op: "case" "(" case_arm ("," case_arm)* "," case_default ")"
+case_arm: expr "," case_pipeline
+case_default: case_pipeline
+case_pipeline: "(" operator ("|" operator)* ")"
 partition_op: "partition" "by" NAME "(" operator ("|" operator)* ")"
 getschema_op: "getschema"
 count_op.-1: NAME
@@ -533,7 +539,7 @@ class _ToAst(Transformer):
                 right = c
         return Join(right, tuple(keys), kind)
 
-    # as / fork / partition
+    # as / fork / case / partition
     def as_op(self, ch: list) -> As:
         return As(str(ch[0]))
 
@@ -554,6 +560,27 @@ class _ToAst(Transformer):
                 name = c[1] or f"Fork{len(branches) + 1}"
                 branches.append((name, c[2]))
         return Fork(tuple(branches))
+
+    def case_pipeline(self, ch: list) -> tuple:
+        return ("pipeline", tuple(c for c in ch if isinstance(c, Operator)))
+
+    def case_arm(self, ch: list) -> tuple:
+        predicate = next(c for c in ch if isinstance(c, Expr))
+        pipeline = next(c for c in ch
+                        if isinstance(c, tuple) and c and c[0] == "pipeline")
+        return ("arm", predicate, pipeline[1])
+
+    def case_default(self, ch: list) -> tuple:
+        pipeline = next(c for c in ch
+                        if isinstance(c, tuple) and c and c[0] == "pipeline")
+        return ("default", pipeline[1])
+
+    def case_op(self, ch: list) -> Case:
+        branches = tuple((c[1], c[2]) for c in ch
+                         if isinstance(c, tuple) and c and c[0] == "arm")
+        default = next(c[1] for c in ch
+                       if isinstance(c, tuple) and c and c[0] == "default")
+        return Case(branches, default)
 
     def partition_op(self, ch: list) -> Partition:
         key = next(str(t) for t in ch

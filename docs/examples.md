@@ -50,6 +50,22 @@ q = kql.compile("source | extend Band = iif(Price > 50, 'high', 'low')")
 # -> [{'Price': 90, 'Band': 'high'}, {'Price': 10, 'Band': 'low'}]
 ```
 
+## Conditional pipelines
+
+The tabular `case` extension routes each row through the first matching
+sub-pipeline. Its final, unconditional sub-pipeline is the default.
+
+```python
+q = kql.compile("""
+    source
+    | case (Severity >= 4, (project Alert = Message),
+            Severity >= 2, (project Warning = Message),
+            (project Info = Message))
+""")
+q.transform({"Severity": 4, "Message": "disk full"})
+# -> [{'Alert': 'disk full'}]
+```
+
 ## Parse structured strings
 
 Extract typed columns out of a message with `parse`. Use `parse-where` to drop
@@ -304,8 +320,48 @@ q = kql.compile("""
     | join kind=inner Snapshot on v
 """)
 q.transform({"V": [1, 2, 3]})
-# -> two rows (v=2, v=3), each joined to the matching snapshot row
+# -> [{'V': [1, 2, 3], 'v': 2, 'V1': [1, 2, 3], 'v1': 2},
+#     {'V': [1, 2, 3], 'v': 3, 'V1': [1, 2, 3], 'v1': 3}]
 ```
+
+### A real use case: correlate events inside one record
+
+A single sign-in record can carry a batch of `Attempts`. `mv-expand` turns the
+batch into a per-attempt row-set, `as` snapshots it, and a self-`join` lines up
+two rows from the *same* record — here, a user who **failed and then succeeded**
+in the same batch (a password-spray attempt that eventually got in).
+
+```python
+q = kql.compile("""
+    source
+    | mv-expand attempt = Attempts
+    | project User = tostring(attempt.user),
+              Result = tostring(attempt.result),
+              IP = tostring(attempt.ip)
+    | as Attempts
+    | where Result == "failure"
+    | join kind=inner Attempts on User
+    | where Result1 == "success"
+    | project User, FailedFromIP = IP, SucceededFromIP = IP1
+""")
+
+q.transform({"Attempts": [
+    {"user": "alice", "result": "failure", "ip": "10.0.0.9"},
+    {"user": "alice", "result": "success", "ip": "10.0.0.9"},
+    {"user": "bob",   "result": "failure", "ip": "45.9.1.2"},
+    {"user": "bob",   "result": "success", "ip": "203.0.113.7"},
+    {"user": "carol", "result": "failure", "ip": "8.8.8.8"},
+]})
+# -> [{'User': 'alice', 'FailedFromIP': '10.0.0.9',  'SucceededFromIP': '10.0.0.9'},
+#     {'User': 'bob',   'FailedFromIP': '45.9.1.2',  'SucceededFromIP': '203.0.113.7'}]
+# carol only failed, so she is dropped by the inner join.
+```
+
+The snapshot holds *every* attempt, so the right side of the join carries both
+failures and successes for a user; the `where Result1 == "success"` after the
+join keeps only the pairs that ended in a successful sign-in. (The right side of
+a `join` must be a `source`/`datatable`/`range` subquery, so a named `as` table
+is joined directly and filtered *after* the join, as shown.)
 
 ## Generate rows with `range`
 
@@ -373,14 +429,14 @@ for out in q.stream(read_events()):
 
 ## Handling unsupported queries
 
-Stateful operators are rejected at compile time — catch it early.
+Recognized operators that are not implemented are rejected at compile time.
 
 ```python
 try:
-    kql.compile("source | summarize count() by Symbol")
+    kql.compile("source | top-nested 3 of Category by count()")
 except kql.KqlUnsupportedError as e:
     print("cannot run:", e)
-# cannot run: 'summarize' is a stateful operator ... (line 1)
+# cannot run: operator 'top-nested' is recognized but not yet implemented
 ```
 
 ---

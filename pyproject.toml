@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "streaming-kql"
 dynamic = ["version"]
-description = "Evaluate the stateless subset of Kusto Query Language (KQL) over a stream of events, one record at a time — pure Python, no external runtime."
+description = "Evaluate KQL over independent events with per-event row sets and bounded tables, in pure Python."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"

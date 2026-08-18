@@ -240,6 +240,15 @@ class Fork(Operator):
 
 
 @dataclass(frozen=True)
+class Case(Operator):
+    """Route each row through the first sub-pipeline whose predicate is true;
+    unmatched rows run through the required default sub-pipeline."""
+
+    branches: tuple[tuple[Expr, tuple[Operator, ...]], ...]
+    default: tuple[Operator, ...]
+
+
+@dataclass(frozen=True)
 class Partition(Operator):
     """Group the current per-record row-set by a column and run a sub-pipeline on
     each group, concatenating the results (1 → N, stateless within the record)."""

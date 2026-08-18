@@ -1,0 +1,36 @@
+# Tabular case: route each row through its first matching sub-pipeline, or the
+# required default sub-pipeline, then outer-align the branch schemas.
+
+- name: case_first_match_default_and_outer_schema
+  query: >-
+    source | mv-expand x = xs
+    | case (x >= 0, (project nonnegative = x),
+            x > 0, (project unreachable = x),
+            (project negative = x))
+  input:  [{xs: [1, 0, -1]}]
+  expect:
+    - {nonnegative: 1, negative: null}
+    - {nonnegative: 0, negative: null}
+    - {nonnegative: null, negative: -1}
+
+- name: case_predicate_null_is_false
+  query: >-
+    source | case (flag, (extend branch = "true"),
+                   (extend branch = "default"))
+  input:  [{flag: null}]
+  expect: [{flag: null, branch: "default"}]
+
+- name: case_branch_receives_all_matched_rows
+  query: >-
+    source | mv-expand x = xs
+    | case (x > 0, (summarize total = sum(x)),
+            (project negative = x))
+  input:  [{xs: [1, 2, -1]}]
+  expect:
+    - {total: 3, negative: null}
+    - {total: null, negative: -1}
+
+- name: case_requires_default_pipeline
+  query: 'source | case (x > 0, (extend branch = "positive"))'
+  input:  [{x: 1}]
+  expect_error: KqlCompileError

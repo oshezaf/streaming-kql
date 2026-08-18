@@ -27,6 +27,7 @@ from .nodes import (
     BagUnpack,
     Binary,
     Call,
+    Case,
     Column,
     Count,
     Datatable,
@@ -924,6 +925,17 @@ def _subquery_branch(
     return _emit
 
 
+def _outer_align(rows: list[Record]) -> list[Record]:
+    columns: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for column in row:
+            if column not in seen:
+                seen.add(column)
+                columns.append(column)
+    return [{column: row.get(column) for column in columns} for row in rows]
+
+
 def _compile_union(op: Union, opts: Options, declared: set[str]) -> BatchFn:
     branches: list[Callable[[_Ctx], list[Record]]] = []
     for operand in op.operands:
@@ -945,15 +957,7 @@ def _compile_union(op: Union, opts: Options, declared: set[str]) -> BatchFn:
                 common = set(r) if common is None else (common & set(r))
             keep = common or set()
             return [{k: v for k, v in r.items() if k in keep} for r in out]
-        # outer (default): null-fill the union of columns, first-seen order
-        allcols: list[str] = []
-        seen: set[str] = set()
-        for r in out:
-            for k in r:
-                if k not in seen:
-                    seen.add(k)
-                    allcols.append(k)
-        return [{k: r.get(k) for k in allcols} for r in out]
+        return _outer_align(out)
 
     return _union
 
@@ -1285,6 +1289,34 @@ def _compile_fork(op: Fork, opts: Options) -> BatchFn:
         return rows                              # pass the input through unchanged
 
     return _fork
+
+
+def _compile_case(op: Case, opts: Options) -> BatchFn:
+    branches = [
+        (compile_expr(predicate, opts), _compile_subpipeline(operators, opts))
+        for predicate, operators in op.branches
+    ]
+    run_default = _compile_subpipeline(op.default, opts)
+
+    def _case(rows: list[Record], ctx: _Ctx) -> list[Record]:
+        routed: list[list[Record]] = [[] for _ in range(len(branches) + 1)]
+        for row in rows:
+            target = len(branches)
+            for index, (predicate, _) in enumerate(branches):
+                if _truthy(predicate(row)):
+                    target = index
+                    break
+            routed[target].append(row)
+
+        out: list[Record] = []
+        for matched, (_, run) in zip(routed[:-1], branches, strict=True):
+            if matched:
+                out.extend(run(matched, ctx))
+        if routed[-1]:
+            out.extend(run_default(routed[-1], ctx))
+        return _outer_align(out)
+
+    return _case
 
 
 def _compile_partition(op: Partition, opts: Options) -> BatchFn:
@@ -1668,6 +1700,8 @@ def _compile_batch(op: Operator, opts: Options, declared: set[str]) -> BatchFn:
         return _compile_as(op)
     if isinstance(op, Fork):
         return _compile_fork(op, opts)
+    if isinstance(op, Case):
+        return _compile_case(op, opts)
     if isinstance(op, Partition):
         return _compile_partition(op, opts)
     if isinstance(op, GetSchema):
@@ -1687,7 +1721,7 @@ def _compile_batch(op: Operator, opts: Options, declared: set[str]) -> BatchFn:
     raise KqlCompileError(f"cannot compile batch operator {type(op).__name__}")
 
 
-_BATCH_OP_TYPES = (Summarize, Sort, Top, Distinct, Take, Join, Union, As, Fork,
+_BATCH_OP_TYPES = (Summarize, Sort, Top, Distinct, Take, Join, Union, As, Fork, Case,
                    Partition, GetSchema, Count, Sample, SampleDistinct, Serialize,
                    MvApply, MakeSeries)
 

@@ -87,6 +87,7 @@ Cases live under `tests/cases/<category>/`. Current inventory:
 | | `join.yaml` | 14 | `join` (inner/innerunique/outer/semi/anti) vs. constant table or `source` subquery |
 | | `union.yaml` | 9 | `union` of `source` subqueries and constant tables; `kind=inner/outer` |
 | | `stream_tables.yaml` | 12 | `datatable`/`externaldata`/`range`, `as`/`fork`/`partition` |
+| | `case.yaml` | 4 | tabular `case`: first-match routing, default, outer schema, branch batches |
 | | `count_getschema.yaml` | 7 | `count`, `getschema` |
 | | `deferred_ops.yaml` | 20 | `sample`, `sample-distinct`, `serialize` (window fns), `mv-apply`, `make-series` (incl. inferred bounds) |
 | `functions/` | `scalars.yaml` | 7 | core math scalar functions |
@@ -97,7 +98,7 @@ Cases live under `tests/cases/<category>/`. Current inventory:
 | | `timespan_and_xml.yaml` | 6 | timespan literals/arithmetic, `parse_xml` |
 | | `dynamic_and_unsupported.yaml` | 5 | `parse_json` + dynamic access; rejection of deferred operators |
 | `dcr/` | `transformations_examples.yaml` | 2 | verbatim Azure Monitor transformation doc examples |
-| **Total** | | **186** | |
+| **Total** | | **190** | |
 
 > The CI gate asserts that every operator/function marked ✅ in
 > [SPEC.md](SPEC.md) Appendix A has at least one case. `serialize`, `mv-apply`,

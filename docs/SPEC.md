@@ -196,10 +196,10 @@ def domain_of(email: str) -> str: ...
 
 Baseline = the full **Azure Monitor transformations (DCR) KQL feature set**
 ([reference](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-kql)),
-plus remaining stateless operators. Tracked in Appendix A.
+plus bounded per-event tabular operators. Tracked in Appendix A.
 
 ### 5.1 Statements
-`source` (the input stream — the only table), `print` (single synthetic row),
+`source` (the current input event), `print` (single synthetic row),
 `let` (scalar / tabular / scalar-argument user function, per DCR).
 
 ### 5.2 Tabular operators
@@ -216,7 +216,7 @@ plus remaining stateless operators. Tracked in Appendix A.
 `top`, `distinct`, `take`/`limit`, `count`, `getschema`, `union`, `join`,
 `partition`, `as`, `fork`, `serialize` (with `row_number`/`prev`/`next`/
 `row_cumsum` window functions), `mv-apply`, `make-series`, `sample`,
-`sample-distinct`. See §2.4.
+`sample-distinct`, and the tabular `case` extension. See §2.4.
 
 **Deferred — recognized, raise `KqlUnsupportedError` (not yet built):** `scan`,
 `top-nested`.
@@ -283,28 +283,22 @@ so almost every KQL tabular operator has a stateless per-record form. There is
 > stateless. Only a *temporal* join of two independent streams is out of scope —
 > and it cannot be expressed, since `source` denotes the current record.
 
-> **`union` (partial):** the stateless slice — unioning `source` subqueries and
-> **constant** reference tables (`datatable`/`externaldata`), evaluated per
-> record — **is supported**. Only `union` operands that themselves use a stateful
-> operator are rejected. Unioning two live streams remains out of scope.
+> **`union`:** incoming rows, `source` subqueries, named `as`/`fork` tables, and
+> **constant** reference tables (`datatable`/`externaldata`/`range`) can be
+> unioned within the current event. Operands may use batch operators; unioning
+> two independent live streams remains out of scope.
 
 ### 5.7 Further stateless additions to consider (survey)
 
 Beyond the DCR baseline, these KQL features also fit the **single-event
-stateless** model and are candidates for future milestones. (Anything that
-aggregates, orders, or dedupes across rows is *excluded* — see §5.6.)
+stateless** model and are candidates for future milestones.
 
 **Tabular operators (stateless-compatible):**
 
 | Operator | Cardinality | Notes / priority |
 |---|---|---|
-| `datatable` | source, N constant rows | for `let`/tests; **planned** |
-| `evaluate bag_unpack` | 1→1 | expand a `dynamic` bag into columns — high value for logs |
-| `mv-expand` | 1→N | expand an array/bag column into rows (deferred; the model allows 1→N) |
-| `mv-apply` (no aggregation) | 1→N | per-row subquery over an array; only the non-aggregating form |
 | `evaluate narrow` | 1→N | unpivot one row to key/value rows |
 | `search` (per-row) | 1→0/1 | free-text match across a row's columns |
-| `sample` / `sample-distinct` | 1→0/1 | non-deterministic (random) — opt-in only |
 
 **Implemented as per-record batch operators (§2.4):** `summarize`, `join`,
 `union`, `sort`/`order`, `top`, `partition`, `distinct`, `count`, `as`, `fork`,
@@ -352,7 +346,7 @@ KQL text ─▶ lexer+parser ─▶ AST (operators + scalar expr) ─▶ semanti
         ─▶ compiled plan (list of record→records callables) ─▶ 0..N records
 ```
 
-Modules (M0 keeps them as flat modules; they may grow into subpackages):
+Modules are currently kept flat and may grow into subpackages:
 `streaming_kql/parser.py` (**Lark** grammar + a `Transformer` that lowers the
 parse tree → AST),
 `nodes.py` (AST), `evaluator.py` (operator + scalar compilation, `Options`,
@@ -370,12 +364,12 @@ the per-record model showed every tabular operator has a stateless form.)
 
 ### 6.1 Parser strategy — options & trade-offs
 
-The parser is the largest and most consequential component (it also gates how
-easily the grammar grows toward stateful operators). Three options:
+The parser is the largest and most consequential component. The original
+decision considered three options:
 
 | Option | Pros | Cons | Fit for future stateful growth |
 |---|---|---|---|
-| **A. Hand-written recursive descent** *(current M0)* | Zero dependencies; full control of error messages/positions; easy to special-case KQL quirks (hyphenated operators, `matches regex`, `!op` forms); trivial to extend operator-by-operator | More code to maintain as the grammar grows; risk of ad-hoc grammar drift; no formal grammar artifact | **Good**: adding an operator = a parse branch + a node; but a large grammar (many operators/functions, `let`, `datatable`, joins later) gets unwieldy by hand |
+| **A. Hand-written recursive descent** *(replaced after M0)* | Zero dependencies; full control of error messages/positions; easy to special-case KQL quirks (hyphenated operators, `matches regex`, `!op` forms); trivial to extend operator-by-operator | More code to maintain as the grammar grows; risk of ad-hoc grammar drift; no formal grammar artifact | **Good**: adding an operator = a parse branch + a node; but a large grammar (many operators/functions, `let`, `datatable`, joins later) gets unwieldy by hand |
 | **B. [Lark](https://github.com/lark-parser/lark) EBNF grammar** | Pure-Python (keeps the no-runtime promise); a single declarative grammar file is easier to review/evolve; good error reporting; earley/LALR options | New dependency; must map parse tree → AST; KQL's context-sensitive bits (hyphenated op names, `has`/`contains` as operators vs. identifiers) need care | **Best**: a declarative grammar scales to the full KQL surface (and stateful operators) far better than hand-code; grammar changes are localized and diffable |
 | **C. [ANTLR4](https://github.com/antlr/antlr4) with a KQL grammar (Python target)** | Could reuse an existing community/Microsoft Kusto ANTLR grammar → broad coverage quickly; industrial-strength | Heavier toolchain (Java to generate; generated Python is bulky); grammar may over-cover (full ADX) and need trimming; less ergonomic error messages | **Strong** on coverage, **weaker** on maintainability/footprint for a small library |
 

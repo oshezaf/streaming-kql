@@ -1,4 +1,4 @@
-"""streaming-kql — evaluate the stateless subset of KQL over a stream of events.
+"""Evaluate KQL over independent events with per-event row sets and tables.
 
 See docs/SPEC.md for the full specification.
 """
@@ -17,7 +17,7 @@ from .api import (
     function,
 )
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 __all__ = [
     "compile",

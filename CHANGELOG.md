@@ -4,6 +4,21 @@ All notable changes to **streaming-kql** are documented here. The format is base
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [0.0.2] - 2026-08-16
+
+### Added
+
+- Added the tabular `case` extension for ordered, first-match routing through
+  sub-pipelines, with a required default branch and outer-aligned output schemas.
+- Added conformance coverage for overlapping predicates, null predicates,
+  batch operators within branches, and the required default branch.
+
+### Documentation
+
+- Updated the README and package description to reflect per-event row sets,
+  bounded constant/subquery/named tables, and zero-to-many output records.
+- Corrected stale operator support, installation, and contributor guidance.
+
 ## [0.0.1] - 2026-08-14
 
 Initial release: a pure-Python engine that evaluates the **stateless, per-record

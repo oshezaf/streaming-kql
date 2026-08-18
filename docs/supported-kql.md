@@ -3,8 +3,8 @@
 This page is the authoritative list of what the `streaming-kql` engine accepts.
 The baseline is the Azure Monitor
 [**transformations (DCR) KQL surface**](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-kql)
-— "single row in → zero or one row out" — plus the remaining **stateless**
-operators. KQL semantics follow the
+with its "single row in → zero or one row out" contract. Beyond that baseline,
+the engine supports bounded per-event row sets and tables. KQL semantics follow the
 [official Microsoft KQL reference](https://learn.microsoft.com/en-us/kusto/query/).
 
 Under the per-record model almost every KQL tabular operator has a stateless
@@ -20,7 +20,7 @@ per-record form; the few gaps are listed under
 
 | Statement | Status | Notes |
 |---|---|---|
-| `source` | ✅ | The input stream — the only table. Every query starts from `source` (or `print`). |
+| `source` | ✅ | The current input event. Queries may also use constant table heads and per-event subquery or named tables. |
 | [`print`](https://learn.microsoft.com/en-us/kusto/query/print-operator) | ✅ | Emits a single synthetic row; can be piped into operators. |
 | [`let`](https://learn.microsoft.com/en-us/kusto/query/let-statement) | ✅ | **Scalar** bindings (`let x = <expr>;`, may chain) and **tabular** bindings to a [`datatable`/`externaldata`/`range`](#reference-tables) table. Scalar-argument function `let` is not yet supported. |
 
@@ -64,6 +64,7 @@ print x = 2 + 3, y = 'hi'
 | [`as`](https://learn.microsoft.com/en-us/kusto/query/as-operator) | N → N | Name the current row-set so later `join`/`union` can reference it. |
 | [`partition`](https://learn.microsoft.com/en-us/kusto/query/partition-operator) | N → M | Group the row-set by a column and run a sub-pipeline per group. |
 | [`fork`](https://learn.microsoft.com/en-us/kusto/query/fork-operator) | N → N | Run sub-pipelines that capture named side-tables; input passes through. |
+| `case` *(streaming-kql extension)* | N → M | Route each row through its first matching sub-pipeline or the default. |
 | [`count`](https://learn.microsoft.com/en-us/kusto/query/count-operator) | N → 1 | Count the rows of the per-record row-set (`{Count: n}`). |
 | [`getschema`](https://learn.microsoft.com/en-us/kusto/query/getschema-operator) | N → M | Describe the row-set's columns as rows. |
 | [`serialize`](https://learn.microsoft.com/en-us/kusto/query/serialize-operator) | N → N | Assign columns using **window functions** (`row_number`/`prev`/`next`/`row_cumsum`). |
@@ -207,8 +208,8 @@ The incoming (left) row passes through, then each operand's rows are appended.
 - Because operands run on the piped stream, a `where` **before** `union` filters
   records before the branch is evaluated.
 
-> A `union` operand that uses a **stateful** operator (e.g. `summarize`) is
-> rejected at compile time, keeping the whole query stateless.
+> A `union` operand may use batch operators such as `summarize`; they remain
+> scoped to the current input event's row set.
 
 ### Aggregating & reordering operators (per-record row-set)
 
@@ -258,7 +259,7 @@ source | mv-expand v = Values | take 5                   // first 5 (== limit 5)
   combinations (bare column names).
 - `take N` / `limit N` — the first `N` rows of the batch.
 
-#### `as` / `fork` / `partition` details
+#### `as` / `fork` / `case` / `partition` details
 
 These name or reshape the per-record row-set so a stream slice can be **reused as
 a table** later in the same record's processing.
@@ -269,6 +270,11 @@ source | mv-expand v = V | as Snapshot | where v > 1 | join kind=inner Snapshot 
 
 // `fork` captures named side-tables (the input passes through unchanged):
 source | fork Errors=(where sev == "err") Warnings=(where sev == "warn") | union Errors, Warnings
+
+// `case` routes each row exclusively, using the first true predicate:
+source | case (sev == "err", (project Error = message),
+               sev == "warn", (project Warning = message),
+               (project Other = message))
 
 // `partition` groups the row-set and runs a sub-pipeline per group:
 source | mv-expand r = Rows | extend g = r.g, n = r.n | partition by g (top 1 by n)
@@ -281,6 +287,13 @@ source | mv-expand r = Rows | extend g = r.g, n = r.n | partition by g (top 1 by
   and stores each result as a named table (auto-named `Fork1`, … if unnamed);
   the operator's own output is the **unchanged input**. Combine the captures with
   `union`/`join`.
+- **`case (predicate, (sub-pipeline), …, (default-sub-pipeline))`** evaluates
+  predicates in order for each row. Each row enters only its first matching
+  branch; unmatched rows enter the required default branch. A branch receives
+  all rows routed to it, so it may use batch operators such as `summarize`. The
+  branch results are concatenated in declaration order and outer-aligned, with
+  missing columns set to `null`. This operator is a **streaming-kql extension**;
+  native KQL's `case()` is scalar-only.
 - **`partition by Col (sub-pipeline)`** groups the current rows by `Col` and runs
   the sub-pipeline on each group, concatenating the results.
 

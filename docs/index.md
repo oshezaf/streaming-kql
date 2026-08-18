@@ -1,7 +1,7 @@
 # streaming-kql documentation
 
-**Evaluate the stateless subset of the Kusto Query Language (KQL) over a stream
-of events — one record at a time. Pure Python, no external runtime.**
+**Evaluate Kusto Query Language (KQL) over a stream of independent events.
+Pure Python, no external runtime.**
 
 `streaming-kql` runs the common, high-value part of KQL — **filter, reshape, and
 enrich each event** — entirely in-process in Python, with the same shape as an
@@ -22,9 +22,10 @@ container, no .NET engine, and no JVM.
 
 ## The one-sentence model
 
-> A query is applied to **each record individually**. Only operators that take a
-> single row as input are supported; each input row yields **zero or more output
-> rows** with no dependence on other rows, ordering, or accumulated state.
+> A query is applied to **each input record independently**. Its execution may
+> contain a bounded row set and multiple constant, subquery, or named tables;
+> it yields **zero or more output rows** without carrying state to another input
+> record.
 
 - **1 → 0** — `where` filters the record out.
 - **1 → 1** — `extend`, `project`, `parse`, … reshape the record.
@@ -61,7 +62,8 @@ q.match({"Symbol": "MSFT", "Price": 10})
 `source` subqueries and constant tables), `lookup` and `join` (all kinds) against
 constant `datatable`/`externaldata` tables or same-record `source` subqueries,
 per-record `summarize`/`sort`/`top`/`distinct`/`take`/`partition`, `as`/`fork`
-for naming stream slices, `range` as a source, schema-driven type
+for naming stream slices, the tabular `case` routing extension, `range` as a
+source, schema-driven type
 coercion, a full scalar-expression grammar, and a large built-in scalar-function
 library. See [Supported KQL](supported-kql.md) for the authoritative list and
 [SPEC.md](SPEC.md) §9 for the roadmap.

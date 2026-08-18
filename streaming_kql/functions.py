@@ -1,7 +1,7 @@
-"""Scalar function library + registry.
+"""Scalar function library and registry.
 
-M0 ships a starter set of the Azure Monitor DCR scalar functions. The registry
-is extensible at runtime via :func:`register` (exposed publicly as
+The built-in set covers common Azure Monitor DCR and general KQL scalar
+functions. The registry is extensible at runtime via :func:`register` (exposed publicly as
 ``streaming_kql.function``), so callers can add domain helpers without forking.
 """
 from __future__ import annotations

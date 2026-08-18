@@ -33,14 +33,14 @@ result across records.
 
 - **Parse or semantic errors** raise [`KqlCompileError`](#errors) with line/column
   information.
-- **Recognized-but-unsupported (stateful) features** raise
+- **Recognized-but-not-yet-implemented features** raise
   [`KqlUnsupportedError`](#errors) naming the operator.
 
 ```python
 q = kql.compile("source | where Status == 'active'")
 
-kql.compile("source | summarize count() by X")
-# raises KqlUnsupportedError: 'summarize' is a stateful operator
+kql.compile("source | scan declare (n:long) with (step s: true => n = 1;)")
+# raises KqlUnsupportedError: operator 'scan' is recognized but not yet implemented
 ```
 
 > The name `compile` deliberately mirrors `re.compile` ergonomics: compile once,
@@ -223,14 +223,14 @@ graph TD
 |---|---|---|
 | `KqlError` | base class | Catch this to handle any library error. |
 | `KqlCompileError` | at `compile` time | Lex/parse/semantic failure. Carries `.line` and `.col`. |
-| `KqlUnsupportedError` | at `compile` time | A recognized but unsupported (stateful) feature — subclass of `KqlCompileError`. The message names the operator. |
+| `KqlUnsupportedError` | at `compile` time | A recognized but not-yet-implemented feature; subclass of `KqlCompileError`. The message names the operator. |
 | `KqlEvalError` | at evaluation time | Only raised when `Options.strict_types=True`; otherwise such cases yield `null`. |
 
 ```python
 try:
-    q = kql.compile("source | sort by Time")
+  q = kql.compile("source | top-nested 3 of Category by count()")
 except kql.KqlUnsupportedError as e:
-    print(e)   # 'sort' is a stateful operator ... (line 1)
+  print(e)   # operator 'top-nested' is recognized but not yet implemented
 ```
 
 ---

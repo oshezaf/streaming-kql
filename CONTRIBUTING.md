@@ -42,12 +42,12 @@ ruff check . && mypy && pytest
 
 The engine is **stateless / per-record**. Aggregating, ordering, and joining
 operators (`summarize`, `join`, `union`, `sort`, `top`, `partition`, …) are
-supported in their **per-record** form — they act on the row-set derived from a
+supported in their **per-record** form. They act on the row-set derived from a
 **single** input record, never across the stream (see
 [docs/testing.md](docs/testing.md) and `docs/SPEC.md` §2.4). Only genuinely
-cross-record behaviour — a *temporal* two-stream `join`, a stream-global
-`summarize`, `make-series` — is out of scope and rejected at compile time. A
-future stateful extension will live behind an explicit opt-in — please open an
-issue to discuss before adding one.
+cross-record behaviour, such as a *temporal* two-stream `join` or stream-global
+`summarize`, is out of scope. Per-record `make-series` is supported. A future
+stateful extension will live behind an explicit opt-in; please open an issue to
+discuss before adding one.
 
 By contributing you agree your contributions are licensed under Apache-2.0.

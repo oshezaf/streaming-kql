@@ -9,7 +9,7 @@
 ## Install
 
 ```bash
-pip install streaming-kql          # after first release
+pip install streaming-kql
 ```
 
 From a checkout, for development:
@@ -42,24 +42,25 @@ processed on its own:
 
 - The query runs against **one record at a time** (a Python `dict`).
 - Each input record produces **zero or more** output records.
-- There is **no state** carried between records — no ordering, no aggregation,
-  no joins.
+- Operators can expand, aggregate, order, and join rows **within that input
+  record's execution context**.
+- There is **no state** carried between input records.
 
 This is exactly the contract of an Azure Monitor
 [**DCR transformation**](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-kql):
-"single row in → zero or one row out." `streaming-kql` targets that surface and
-the remaining stateless operators.
+"single row in → zero or one row out." `streaming-kql` includes that surface,
+then extends it with bounded per-event row sets and tables.
 
 | Cardinality | Example | Result |
 |---|---|---|
 | 1 → 0 | `source \| where Price > 80` on `{Price: 10}` | `[]` (dropped) |
 | 1 → 1 | `source \| extend x = Price * 2` | one reshaped record |
-| 1 → N | `source \| evaluate bag_unpack(Ctx)` | columns added from a bag |
+| 1 → N | `source \| mv-expand Item = Items` | one output row per array item |
 
-Operators that need to look across records — `summarize`, `join`, `sort`,
-`top`, `distinct`, … — are **rejected at compile time** with a
-`KqlUnsupportedError`. This is intentional: the engine tells you what it cannot
-do rather than silently producing wrong results.
+Batch operators such as `summarize`, `join`, `sort`, `top`, and `distinct`
+operate on the current event's row set. Constant tables, same-event `source`
+subqueries, and row sets captured by `as` or `fork` provide bounded tabular
+inputs. None of these operations observes rows produced for another event.
 
 ## Three ways to run a query
 

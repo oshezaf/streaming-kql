@@ -1,24 +1,25 @@
 # streaming-kql
 
-**Evaluate the stateless subset of the Kusto Query Language (KQL) over a stream
-of events — one record at a time. Pure Python, no external runtime.**
+**Evaluate Kusto Query Language (KQL) over a stream of independent events.
+Pure Python, no external runtime.**
 
 Existing ways to run KQL need a cloud service, a local container, a .NET engine,
-or a JVM. `streaming-kql` runs the common, high-value part of KQL — **filter,
-reshape, and enrich each event** — entirely in-process in Python, with the same
-shape as an Azure Monitor **DCR transformation** or a Sentinel **ASIM parser's**
-per-row logic.
+or a JVM. `streaming-kql` runs KQL entirely in-process in Python. Each input
+event is evaluated independently, while operators can expand it into a bounded
+row set, aggregate or reorder those rows, and combine constant, subquery, and
+named tables within that event's execution context.
 
-> **Status: alpha (M0).** The engine currently supports `where`/`filter`,
-> `extend`, `project`, `project-away`, `project-rename`, a scalar-expression
-> grammar, and a starter scalar-function set. Stateful operators (`summarize`,
-> `join`, `sort`, …) are rejected at compile time. See [docs/SPEC.md](docs/SPEC.md)
-> for the full specification and roadmap.
+> **Status: alpha.** The engine supports row, expansion, aggregation, ordering,
+> branching, and bounded table-combination operators, including `summarize`,
+> `join`, `union`, `mv-apply`, `make-series`, and the tabular `case` extension.
+> Processing remains stateless across input events. See the
+> [full specification](https://github.com/oshezaf/streaming-kql/blob/main/docs/SPEC.md)
+> and [supported KQL reference](https://github.com/oshezaf/streaming-kql/blob/main/docs/supported-kql.md).
 
 ## Install
 
 ```bash
-pip install streaming-kql          # (after first release)
+pip install streaming-kql
 # dev:
 pip install -e ".[dev]"
 ```
@@ -63,22 +64,37 @@ kql.compile("source | extend d = domain_of(From)")
 
 ## Documentation
 
-Full developer documentation lives in [`docs/`](docs/index.md):
+Full developer documentation lives in
+[`docs/`](https://github.com/oshezaf/streaming-kql/blob/main/docs/index.md):
 
-- [Getting started](docs/getting-started.md) — install, first query, the model.
-- [Usage & API reference](docs/usage.md) — `compile`, `Query`, `Node`, `Options`,
+- [Getting started](https://github.com/oshezaf/streaming-kql/blob/main/docs/getting-started.md): install, first query, and the execution model.
+- [Usage & API reference](https://github.com/oshezaf/streaming-kql/blob/main/docs/usage.md): `compile`, `Query`, `Node`, `Options`,
   `Schema`, custom functions, error handling.
-- [Supported KQL](docs/supported-kql.md) — every operator and function accepted,
+- [Supported KQL](https://github.com/oshezaf/streaming-kql/blob/main/docs/supported-kql.md): every operator and function accepted,
   plus what is rejected.
-- [Examples](docs/examples.md) — DCR and ASIM-style recipes.
-- [Specification](docs/SPEC.md) — formal spec, design rationale, roadmap.
+- [Examples](https://github.com/oshezaf/streaming-kql/blob/main/docs/examples.md): DCR and ASIM-style recipes.
+- [Specification](https://github.com/oshezaf/streaming-kql/blob/main/docs/SPEC.md): formal spec, design rationale, and roadmap.
 
 ## Supported KQL
 
-The target is the full **Azure Monitor transformations (DCR) KQL surface**
-(single row in → ≤ one row out) plus all remaining **stateless** operators. See
-[docs/supported-kql.md](docs/supported-kql.md) for the authoritative list, and
-[docs/SPEC.md](docs/SPEC.md) §5 with the implementation tracker in Appendix A.
+The baseline is the full **Azure Monitor transformations (DCR) KQL surface**.
+Beyond it, the engine supports per-event row sets and bounded tables: one input
+event can produce zero to many rows, and batch operators act on those rows
+without carrying state to the next event. See
+[Supported KQL](https://github.com/oshezaf/streaming-kql/blob/main/docs/supported-kql.md)
+for the authoritative list.
+
+Route each row through the first matching sub-pipeline with the tabular `case`
+extension. The final sub-pipeline is the required default:
+
+```kusto
+source
+| case (
+    Severity >= 4, (project Alert = Message),
+    Severity >= 2, (project Warning = Message),
+    (project Info = Message)
+)
+```
 
 ## Tests
 
@@ -93,4 +109,5 @@ pytest
 ## License
 
 Apache-2.0. Design and initial evaluator are informed by Microsoft's Apache-2.0
-[`Rx.KQL`](https://github.com/microsoft/RxKql); see [NOTICE](NOTICE).
+[`Rx.KQL`](https://github.com/microsoft/RxKql); see
+[NOTICE](https://github.com/oshezaf/streaming-kql/blob/main/NOTICE).
